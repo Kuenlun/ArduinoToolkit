@@ -1,12 +1,12 @@
 /**
  * To completely disable the logger define the macro "LOG_DISABLE"
- * Must be defined before the include of the file "Logger.h"
+ * Must be defined before the include of the file "Tools/Logger.h"
  * Best practice is to define it in the "platform.ini" file as follows:
 *  build_flags =
 *      -D LOG_DISABLE
  */
 //#define LOG_DISABLE
-#include "Logger.h"
+#include "Tools/Logger.h"
 
 
 /* * * * * *
