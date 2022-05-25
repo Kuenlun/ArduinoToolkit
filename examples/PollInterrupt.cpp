@@ -1,4 +1,5 @@
 #include "PollInterrupt.h"
+#include "Logger.h"
 
 
 // Basic pollInterrupt on pin 13
@@ -13,6 +14,7 @@ static Tools::LowPassPollInterrupt<14> filteredInt(INPUT_PULLDOWN, 1000, 1000);
 void setup()
 {
     Serial.begin(115200);
+    Tools::logger.config("PollInt");
 }
 
 /* * * * * *
@@ -25,10 +27,10 @@ void loop()
     switch (normalInt.poll())
     {
     case Tools::Interrupt::rising:
-        Serial.println("Normal Interrupt Rising");
+        LOG_INFO("Normal Interrupt Rising");
         break;
     case Tools::Interrupt::falling:
-        Serial.println("Normal Interrupt Falling");
+        LOG_INFO("Normal Interrupt Falling");
         break;
     default:
         break;
@@ -40,10 +42,10 @@ void loop()
     switch (filteredInt.poll())
     {
     case Tools::Interrupt::rising:
-        Serial.println("Filtered Interrupt Rising");
+        LOG_INFO("Filtered Interrupt Rising");
         break;
     case Tools::Interrupt::falling:
-        Serial.println("Filtered Interrupt Falling");
+        LOG_INFO("Filtered Interrupt Falling");
         break;
     default:
         break;
@@ -51,16 +53,16 @@ void loop()
 
     // Get every second the state of the interrupts
     static unsigned long initTime = millis();
-    if (millis() - initTime > 1000) {
+    if (millis() - initTime > Tools::secsToMillis(1)) {
         initTime = millis();
 
         // Get the current state of the interrupt (instantaneously)
-        Serial.printf("%d\n", (int8_t)normalInt.getCurrentState());
+        LOG_TRACE("%d", (int8_t)normalInt.getCurrentState());
 
         // Get the current state of the interrupt (instantaneously)
-        Serial.printf("%d\n", (int8_t)filteredInt.getCurrentState());
+        LOG_TRACE("%d", (int8_t)filteredInt.getCurrentState());
         // Get the current state of the interrupt (state of the FSM, filtered)
-        Serial.printf("%d\n", (int8_t)filteredInt.getFilteredState());
-        Serial.println();
+        LOG_TRACE("%d", (int8_t)filteredInt.getFilteredState());
+        LOG_NL();
     }
 }
