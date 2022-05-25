@@ -31,6 +31,10 @@ void setup()
     LOG_ERROR(7);       // Works in the same way as Serial.print()
     LOG_FATAL(32, HEX); // Works in the same way as Serial.print()
 
+    LOG_NL();   // Print empty line
+    LOG_NL(2);  // Print two empty lines
+
+
     // The logger can be configured anywhere in the code
     Tools::logger.config(   "TEST2",
                             Tools::Logger::DEFAULT_PATTERN,

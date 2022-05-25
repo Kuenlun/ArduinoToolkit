@@ -189,6 +189,14 @@ namespace Tools {
                 }
             }
         }
+
+        static void emptyLine() { Serial.println(); }
+
+        static void emptyLine(const uint8_t numLines)
+        {
+            for (uint8_t i = 0; i < numLines; i++)
+                Serial.println();
+        }
     
     private:
         template <typename... Args>
@@ -241,6 +249,7 @@ namespace Tools {
  * to remove code from release versions by defining "LOG_DISABLE" macro.
  */
 #if defined LOG_DISABLE
+    #define LOG_NL(NUM)
     #define LOG_TRACE(...)
     #define LOG_DEBUG(...)
     #define LOG_INFO(...)
@@ -248,6 +257,7 @@ namespace Tools {
     #define LOG_ERROR(...)
     #define LOG_FATAL(...)
 #else
+    #define LOG_NL(NUM)     ::Tools::Logger::emptyLine(NUM)
     #define LOG_TRACE(...)  ::Tools::logger.log(Tools::Logger::Level::trace,\
                                 __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
     #define LOG_DEBUG(...)  ::Tools::logger.log(Tools::Logger::Level::debug,\
