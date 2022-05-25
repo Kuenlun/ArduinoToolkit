@@ -1,8 +1,10 @@
 #include "PollInterrupt.h"
 
 
-static Tools::PollInterrupt<13> pirInt(INPUT_PULLDOWN);
-static Tools::LowPassPollInterrupt<14> ledInt(INPUT_PULLDOWN, 1000, 1000);
+// Basic pollInterrupt on pin 13
+static Tools::PollInterrupt<13> normalInt(INPUT_PULLDOWN);
+// Filtered pollInterrupt on pin 14
+static Tools::LowPassPollInterrupt<14> filteredInt(INPUT_PULLDOWN, 1000, 1000);
 
 
 /* * * * * *
@@ -18,38 +20,47 @@ void setup()
  * * * * * */
 void loop()
 {
-    switch (pirInt.poll())
+    // Poll method updates the state and returns an interrupt
+    // As it is a poll interrupt should be called continuously
+    switch (normalInt.poll())
     {
     case Tools::Interrupt::rising:
-        Serial.println("PIR Rising");
+        Serial.println("Normal Interrupt Rising");
         break;
     case Tools::Interrupt::falling:
-        Serial.println("PIR Falling");
+        Serial.println("Normal Interrupt Falling");
         break;
     default:
         break;
     }
 
-    switch (ledInt.poll())
+    // Poll method updates the state and returns an interrupt
+    // The interrupt is returned based on the change of states of the FSM
+    // As it is a poll interrupt should be called continuously
+    switch (filteredInt.poll())
     {
     case Tools::Interrupt::rising:
-        Serial.println("LED Rising");
+        Serial.println("Filtered Interrupt Rising");
         break;
     case Tools::Interrupt::falling:
-        Serial.println("LED Falling");
+        Serial.println("Filtered Interrupt Falling");
         break;
     default:
         break;
     }
 
+    // Get every second the state of the interrupts
     static unsigned long initTime = millis();
     if (millis() - initTime > 1000) {
         initTime = millis();
 
-        Serial.printf("%d\n", (int8_t)pirInt.getCurrentState());
+        // Get the current state of the interrupt (instantaneously)
+        Serial.printf("%d\n", (int8_t)normalInt.getCurrentState());
 
-        Serial.printf("%d\n", (int8_t)ledInt.getCurrentState());
-        Serial.printf("%d\n", (int8_t)ledInt.getFilteredState());
+        // Get the current state of the interrupt (instantaneously)
+        Serial.printf("%d\n", (int8_t)filteredInt.getCurrentState());
+        // Get the current state of the interrupt (state of the FSM, filtered)
+        Serial.printf("%d\n", (int8_t)filteredInt.getFilteredState());
         Serial.println();
     }
 }

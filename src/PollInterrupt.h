@@ -30,12 +30,20 @@ namespace Tools
     class PollInterrupt
     {
     public:
+        /**
+         * @param mode  PinMode setting: INPUT, INPUT_PULLDOWN or INPUT_PULLUP
+         */
         PollInterrupt(const uint8_t mode=INPUT)
         {
-            pinMode(t_intPin, mode);    // See if it is needed
+            pinMode(t_intPin, mode);
             attachInterrupt(t_intPin, interrupt, CHANGE);
         }
 
+        /**
+         * @brief Updates the state and returns an interrupt
+         * 
+         * @return Interrupt 
+         */
         static Interrupt poll()
         {
             if (s_intFlag) {
@@ -57,6 +65,11 @@ namespace Tools
             return Interrupt::noInterrupt;
         }
 
+        /**
+         * @brief Get the current state of the interrupt
+         * 
+         * @return State 
+         */
         static inline State getCurrentState() { return s_state; }
 
     private:
@@ -105,6 +118,13 @@ namespace Tools
         {
         }
 
+        /**
+         * @brief Updates the state of the interrupt calling the parent poll method
+         * and also updates the state of the FSM
+         * Returns an interrupt based on the changes of states of the FSM
+         * 
+         * @return Interrupt 
+         */
         Interrupt poll()
         {
             // Call parent poll function
@@ -115,6 +135,11 @@ namespace Tools
             return updateFSMtiming();
         }
 
+        /**
+         * @brief Get the current state of the FSM (filtered state of the interrupt)
+         * 
+         * @return State
+         */
         State getFilteredState() {
             switch (m_FSMState)
             {
