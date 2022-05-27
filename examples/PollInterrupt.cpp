@@ -57,12 +57,12 @@ void loop()
         initTime = millis();
 
         // Get the current state of the interrupt (instantaneously)
-        LOG_TRACE("%d", (int8_t)normalInt.getState());
+        LOG_TRACE("PollInterrupt: %d", normalInt.getState());
 
-        // Get the current state of the interrupt (instantaneously)
-        LOG_TRACE("%d", (int8_t)filteredInt.getRawState());
         // Get the current state of the interrupt (state of the FSM, filtered)
-        LOG_TRACE("%d", (int8_t)filteredInt.getState());
+        LOG_TRACE("LowPassPollInterrupt: %d", filteredInt.getState());
+        // Get the current state of the interrupt (instantaneously)
+        LOG_TRACE("LowPassPollInterrupt (raw): %d", filteredInt.getRawState());
         LOG_NL();
     }
 }

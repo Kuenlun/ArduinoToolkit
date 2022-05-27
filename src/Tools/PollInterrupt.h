@@ -6,14 +6,46 @@
 namespace Tools
 {
 
-    enum class Interrupt : int8_t
+    struct Interrupt
     {
-        noInterrupt = 0, rising = 1, falling = -1
+    public:
+        enum Value : int8_t
+        {
+            noInterrupt = 0, rising = 1, falling = -1
+        };
+
+        Interrupt() = default;
+        constexpr Interrupt(Value value) : m_value(value) { }
+
+        // Allow switch and comparisons.
+        constexpr operator Value() const { return m_value; }
+        // Allow cast to bool
+        constexpr explicit operator bool() const { return (bool)m_value; }
+    
+    private:
+        Value m_value;
     };
 
-    enum class State : int8_t
+
+    struct State
     {
-        undefined = -1, low = 0, high = 1
+    public:
+        enum Value : int8_t
+        {
+            undefined = -1, low = 0, high = 1
+        };
+
+        State() = default;
+        constexpr State(const Value value) : m_value(value) { }
+        constexpr State(const bool value) : m_value((Value)value) { }
+
+        // Allow switch and comparisons.
+        constexpr operator Value() const { return m_value; }
+        // Allow cast to bool
+        constexpr explicit operator bool() const { return m_value > 0; }
+    
+    private:
+        Value m_value;
     };
 
 
@@ -51,7 +83,7 @@ namespace Tools
                 // Reset the interrupt flag
                 s_intFlag = false;
                 // Read the GPIO value, invert it depending on "t_invertLogic" and cast it to State
-                const State newState = (State)(t_invertLogic ^ digitalRead(t_intPin));
+                const State newState = State(t_invertLogic ^ digitalRead(t_intPin));
                 // Remark: "newState" can't be "undefined"
                 if (newState == s_state) {
                     return Interrupt::noInterrupt;
