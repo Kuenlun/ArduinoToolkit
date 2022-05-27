@@ -71,7 +71,7 @@ namespace Tools
          * 
          * @return State 
          */
-        static inline State getCurrentState() { return s_state; }
+        static inline State getState() { return s_state; }
 
     private:
         static bool s_intFlag;
@@ -139,23 +139,25 @@ namespace Tools
         }
 
         /**
+         * @brief Get the current state of the interrupt (same as parent method)
+         * 
+         * @return State 
+         */
+        State getRawState() { return PollInterrupt<t_intPin, t_invertLogic>::getState(); }
+
+        /**
          * @brief Get the current state of the FSM (filtered state of the interrupt)
          * 
          * @return State
          */
-        State getFilteredState() {
+        State getState() {
             switch (m_FSMState)
             {
-            case FSMState::low:
-                return State::low;
-            case FSMState::high:
-                return State::high;
-            case FSMState::waitToHigh:
-                return State::low;
-            case FSMState::waitToLow:
-                return State::high;
-            default:
-                return State::undefined;
+            case FSMState::low: return State::low;
+            case FSMState::high: return State::high;
+            case FSMState::waitToHigh: return State::low;
+            case FSMState::waitToLow: return State::high;
+            default: return State::undefined;
             }
         }
 
