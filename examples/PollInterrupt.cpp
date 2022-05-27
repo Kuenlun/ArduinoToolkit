@@ -4,8 +4,8 @@
 
 // Basic pollInterrupt on pin 13
 static Tools::PollInterrupt<13> normalInt(INPUT_PULLDOWN);
-// Filtered pollInterrupt on pin 14
-static Tools::LowPassPollInterrupt<14> filteredInt(INPUT_PULLDOWN, 1000, 1000);
+// Filtered pollInterrupt on pin 14 with inverted logic
+static Tools::LowPassPollInterrupt<14, true> filteredInt(INPUT_PULLDOWN, 1000, 1000);
 
 
 /* * * * * *

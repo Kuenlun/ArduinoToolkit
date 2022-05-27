@@ -24,9 +24,10 @@ namespace Tools
      * 3. The poll function catches the interrupt flag
      * 4. Depending on the previous and curent state of the GPIO we can get the interrupt
      * 
-     * @tparam t_intPin Interrupt GPIO pin
+     * @tparam t_intPin (uint8_t) Interrupt GPIO pin
+     * @tparam t_invertLogic (bool) Invert the logic or not
      */
-    template <uint8_t t_intPin>
+    template <uint8_t t_intPin, bool t_invertLogic=false>
     class PollInterrupt
     {
     public:
@@ -49,8 +50,8 @@ namespace Tools
             if (s_intFlag) {
                 // Reset the interrupt flag
                 s_intFlag = false;
-
-                const State newState = (State)digitalRead(t_intPin);
+                // Read the GPIO value, invert it depending on "t_invertLogic" and cast it to State
+                const State newState = (State)(t_invertLogic ^ digitalRead(t_intPin));
                 // Remark: "newState" can't be "undefined"
                 if (newState == s_state) {
                     return Interrupt::noInterrupt;
@@ -80,21 +81,23 @@ namespace Tools
         IRAM_ATTR static void interrupt() { s_intFlag = true; }
     };
 
-    template <uint8_t t_intPin>
-    bool PollInterrupt<t_intPin>::s_intFlag = false;
+    template <uint8_t t_intPin, bool t_invertLogic>
+    bool PollInterrupt<t_intPin, t_invertLogic>::s_intFlag = false;
 
-    template <uint8_t t_intPin>
-    State PollInterrupt<t_intPin>::s_state = State::undefined;
+    template <uint8_t t_intPin, bool t_invertLogic>
+    State PollInterrupt<t_intPin, t_invertLogic>::s_state = State::undefined;
+
 
 
     /**
      * @brief Same functionality as the parent class "PollInterrupt" with
      * the addition of a low-pass filter implemented through a finite state machine.
      * 
-     * @tparam t_intPin Interrupt GPIO pin
+     * @tparam t_intPin (uint8_t) Interrupt GPIO pin
+     * @tparam t_invertLogic (bool) Invert the logic or not
      */
-    template <uint8_t t_intPin>
-    class LowPassPollInterrupt : public PollInterrupt<t_intPin>
+    template <uint8_t t_intPin, bool t_invertLogic=false>
+    class LowPassPollInterrupt : public PollInterrupt<t_intPin, t_invertLogic>
     {
     private:
         enum class FSMState : int8_t
@@ -111,7 +114,7 @@ namespace Tools
         LowPassPollInterrupt(const uint8_t mode=INPUT,
                              const unsigned long lowToHighWaitTime=0,
                              const unsigned long highToLowWaitTime=0)
-            : PollInterrupt<t_intPin>(mode),
+            : PollInterrupt<t_intPin, t_invertLogic>(mode),
               m_FSMState(FSMState::undefined),
               m_lowToHighWaitTime(lowToHighWaitTime),
               m_highToLowWaitTime(highToLowWaitTime)
@@ -128,7 +131,7 @@ namespace Tools
         Interrupt poll()
         {
             // Call parent poll function
-            const Interrupt interrupt = PollInterrupt<t_intPin>::poll();
+            const Interrupt interrupt = PollInterrupt<t_intPin, t_invertLogic>::poll();
             // Feed the FSM
             updateFSMstate(interrupt);
             // Output interrupt depending on timing
