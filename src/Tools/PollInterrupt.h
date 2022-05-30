@@ -17,7 +17,7 @@ namespace Tools
         Interrupt() = default;
         constexpr Interrupt(Value value) : m_value(value) { }
 
-        // Allow switch and comparisons.
+        // Allow switch and comparisons
         constexpr operator Value() const { return m_value; }
         // Allow cast to bool
         constexpr explicit operator bool() const { return (bool)m_value; }
@@ -39,11 +39,33 @@ namespace Tools
         constexpr State(const Value value) : m_value(value) { }
         constexpr State(const bool value) : m_value((Value)value) { }
 
-        // Allow switch and comparisons.
+        // Allow switch and comparisons
         constexpr operator Value() const { return m_value; }
-        // Allow cast to bool
-        constexpr explicit operator bool() const { return m_value > 0; }
-    
+
+        /**
+         * @brief Prevent "if(state)" usage, as "undefined" value
+         * can not be mapped to bool. Use "toBool" function instead.
+         */
+        explicit operator bool() const = delete;  
+
+        /**
+         * @brief Cast state to bool
+         * @param undefinedDefault Whether undefinded state will be
+         * mapped to true or falase.
+         */
+        bool toBool(const bool undefinedDefault=false) const
+        {
+            switch (m_value)
+            {
+            case low:
+                return false;
+            case high:
+                return true;
+            default:
+                return undefinedDefault ? true : false;
+            }
+        }
+
     private:
         Value m_value;
     };

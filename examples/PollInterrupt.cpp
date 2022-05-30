@@ -15,6 +15,15 @@ void setup()
 {
     Serial.begin(115200);
     Tools::logger.config("PollInt");
+
+    const Tools::State state1 = normalInt.getState();
+    // As "undefined" state can not be mapped directly to bool this is not allowed
+    //if (state1) -> Not allowed
+    // To cast to bool we can use "toBool" method, where "undefined"
+    // maps to "high" or "low", depending on the argument (default "low")
+    LOG_TRACE("Undefined will map to low: %d", state1.toBool());
+    LOG_TRACE("Undefined will map to low: %d", state1.toBool(false));
+    LOG_TRACE("Undefined will map to true: %d", state1.toBool(true));
 }
 
 /* * * * * *
@@ -65,4 +74,5 @@ void loop()
         LOG_TRACE("LowPassPollInterrupt (raw): %d", filteredInt.getRawState());
         LOG_NL();
     }
+
 }
