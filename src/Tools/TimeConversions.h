@@ -3,8 +3,7 @@
 #include <Arduino.h>
 
 
-namespace Tools
-{
+namespace Tools {
 
     // Constexpr seconds to milliseconds (no overflow check)
     template <typename T>

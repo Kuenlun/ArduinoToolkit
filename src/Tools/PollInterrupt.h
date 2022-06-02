@@ -3,8 +3,7 @@
 #include <Arduino.h>
 
 
-namespace Tools
-{
+namespace Tools {
 
     struct Interrupt
     {
