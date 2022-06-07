@@ -1,17 +1,19 @@
-#include "Tools/TimeConversions.h"
 #include "Tools/Logger.h"
 #include "Tools/TimedExecution.h"
 
 
-void foo()
-{
-    LOG_INFO("Working...");
-}
 
-void bar(const unsigned long a)
+class WorkToDo : public TimedExecutionBase
 {
-    LOG_INFO("Working with parameters: %d", a);
-}
+    void timedExecution(const unsigned long waitTime) const
+    {
+        LOG_INFO("Working...");
+    }
+};
+
+
+WorkToDo workToDo;
+TimedExecution timedExecution(workToDo);
 
 
 /* * * * * *
@@ -20,7 +22,7 @@ void bar(const unsigned long a)
 void setup()
 {
     Serial.begin(115200);
-    Tools::logger.config("TIMED EXEC");
+    Tools::logger.config("TimedExecution");
 }
 
 /* * * * * *
@@ -28,9 +30,5 @@ void setup()
  * * * * * */
 void loop()
 {
-    static unsigned long i = 0;
-    // "foo" will be called every seond
-    TIMED_EXECUTION(Tools::secsToMillis(1), foo);
-    // "bar" will be called every 2 seconds
-    TIMED_EXECUTION(Tools::secsToMillis(2), bar, i++);
+    timedExecution.timedExecution(Tools::secsToMillis(1));
 }
