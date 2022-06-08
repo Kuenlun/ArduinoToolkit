@@ -26,5 +26,5 @@ void setup()
 void loop()
 {
     // Print the MAC address every 5 seconds
-    TIMED_EXECUTION(Tools::secsToMillis(5), printMACAddress);
+    TIMED_EXECUTION(Tools::secsToMillis(5), true, printMACAddress);
 }
