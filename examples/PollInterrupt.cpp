@@ -72,7 +72,7 @@ void loop()
         LOG_TRACE("LowPassPollInterrupt: %d", filteredInt.getState());
         // Get the current state of the interrupt (instantaneously)
         LOG_TRACE("LowPassPollInterrupt (raw): %d", filteredInt.getRawState());
-        LOG_NL();
+        LOG_TRACE_NL();
     }
 
 }

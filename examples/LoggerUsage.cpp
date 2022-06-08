@@ -31,10 +31,9 @@ void setup()
     LOG_ERROR(7);       // Works in the same way as Serial.print()
     LOG_FATAL(32, HEX); // Works in the same way as Serial.print()
 
-    LOG_NL();   // Print empty line
-    LOG_RAW("This text will be printed as a normal Serial.print\n");
-    LOG_NL(2);  // Print two empty lines
-    LOG_RAW("This text can also be %s\n", "formatted");
+    LOG_INFO_NL();   // Print empty line
+    LOG_INFO_RAW("This text will be printed as a normal Serial.print\n");
+    LOG_WARN_RAW("This text can also be %s\n", "formatted");
 
 
     // The logger can be configured anywhere in the code

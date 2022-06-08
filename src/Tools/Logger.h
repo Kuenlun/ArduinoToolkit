@@ -43,6 +43,15 @@ namespace Tools {
             setPattern(pattern);
         }
 
+        void config(const char* const name,
+                    const Level level,
+                    const char* const pattern=DEFAULT_PATTERN)
+        {
+            setName(name);
+            setLevel(level);
+            setPattern(pattern);
+        }
+
         void setName(const char* const loggerName) { m_name = loggerName; }
         const char* getName() const { return m_name; }
 
@@ -77,9 +86,6 @@ namespace Tools {
 
         void setLevel(const Level level) { m_level = level; }
         Level getLevel() const { return m_level; }
-
-        template <typename... Args>
-        void log(const Args... args) const { _printUserText(args...); }
 
         template <typename... Args>
         void log(   const Level level,
@@ -193,33 +199,43 @@ namespace Tools {
             }
         }
 
-        static void emptyLine() { Serial.println(); }
-
-        static void emptyLine(const uint8_t numLines)
+        template <typename... Args>
+        void logRaw(const Level level,
+                    const Args... args) const
         {
-            for (uint8_t i = 0; i < numLines; i++)
-                Serial.println();
+            // Skip logging if given level is lower than "m_level"
+            if (level < m_level)
+                return;
+            _printUserText(args...);
+        }
+
+        void emptyLine(const Level level) const
+        {
+            // Skip logging if given level is lower than "m_level"
+            if (level < m_level)
+                return;
+            Serial.println();
         }
     
     private:
         template <typename... Args>
-        void _printUserText(const Args... args) const
+        static void _printUserText(const Args... args)
         {
             Serial.print(args...);
         }
 
         template <typename... Args>
-        void _printUserText(const char* const format, const Args... args) const
+        static void _printUserText(const char* const format, const Args... args)
         {
             Serial.printf(format, args...);
         }
 
-        void _printUserText(const std::string& x) const {
+        static void _printUserText(const std::string& x)
+        {
             Serial.print(x.c_str());
         }
 
-
-        const char* const _levelToStr(const Level level) const
+        static const char* const _levelToStr(const Level level)
         {
             switch (level)
             {
@@ -252,27 +268,53 @@ namespace Tools {
  * to remove code from release versions by defining "LOG_DISABLE" macro.
  */
 #if defined LOG_DISABLE
-    #define LOG_NL(NUM)
-    #define LOG_RAW(...)
+    // Normal log functions
     #define LOG_TRACE(...)
     #define LOG_DEBUG(...)
     #define LOG_INFO(...)
     #define LOG_WARN(...)
     #define LOG_ERROR(...)
     #define LOG_FATAL(...)
+    // Raw log functions
+    #define LOG_TRACE_RAW(...)
+    #define LOG_DEBUG_RAW(...)
+    #define LOG_INFO_RAW(...)
+    #define LOG_WARN_RAW(...)
+    #define LOG_ERROR_RAW(...)
+    #define LOG_FATAL_RAW(...)
+    // New line
+    #define LOG_TRACE_NL(NUM)
+    #define LOG_DEBUG_NL(NUM)
+    #define LOG_INFO_NL(NUM)
+    #define LOG_WARN_NL(NUM)
+    #define LOG_ERROR_NL(NUM)
+    #define LOG_FATAL_NL(NUM)
 #else
-    #define LOG_NL(NUM)     ::Tools::Logger::emptyLine(NUM)
-    #define LOG_RAW(...)    ::Tools::logger.log(__VA_ARGS__)
-    #define LOG_TRACE(...)  ::Tools::logger.log(Tools::Logger::Level::trace,\
+    // Normal log functions
+    #define LOG_TRACE(...)      ::Tools::logger.log(Tools::Logger::Level::trace,\
                                 __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
-    #define LOG_DEBUG(...)  ::Tools::logger.log(Tools::Logger::Level::debug,\
+    #define LOG_DEBUG(...)      ::Tools::logger.log(Tools::Logger::Level::debug,\
                                 __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
-    #define LOG_INFO(...)   ::Tools::logger.log(Tools::Logger::Level::info,\
+    #define LOG_INFO(...)       ::Tools::logger.log(Tools::Logger::Level::info,\
                                 __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
-    #define LOG_WARN(...)   ::Tools::logger.log(Tools::Logger::Level::warn,\
+    #define LOG_WARN(...)       ::Tools::logger.log(Tools::Logger::Level::warn,\
                                 __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
-    #define LOG_ERROR(...)  ::Tools::logger.log(Tools::Logger::Level::error,\
+    #define LOG_ERROR(...)      ::Tools::logger.log(Tools::Logger::Level::error,\
                                 __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
-    #define LOG_FATAL(...)  ::Tools::logger.log(Tools::Logger::Level::fatal,\
+    #define LOG_FATAL(...)      ::Tools::logger.log(Tools::Logger::Level::fatal,\
                                 __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
+    // Raw log functions
+    #define LOG_TRACE_RAW(...)  ::Tools::logger.logRaw(Tools::Logger::Level::trace, __VA_ARGS__)
+    #define LOG_DEBUG_RAW(...)  ::Tools::logger.logRaw(Tools::Logger::Level::debug, __VA_ARGS__)
+    #define LOG_INFO_RAW(...)   ::Tools::logger.logRaw(Tools::Logger::Level::info, __VA_ARGS__)
+    #define LOG_WARN_RAW(...)   ::Tools::logger.logRaw(Tools::Logger::Level::warn, __VA_ARGS__)
+    #define LOG_ERROR_RAW(...)  ::Tools::logger.logRaw(Tools::Logger::Level::error, __VA_ARGS__)
+    #define LOG_FATAL_RAW(...)  ::Tools::logger.logRaw(Tools::Logger::Level::fatal, __VA_ARGS__)
+    // New line
+    #define LOG_TRACE_NL()      ::Tools::logger.emptyLine(Tools::Logger::Level::trace)
+    #define LOG_DEBUG_NL()      ::Tools::logger.emptyLine(Tools::Logger::Level::debug)
+    #define LOG_INFO_NL()       ::Tools::logger.emptyLine(Tools::Logger::Level::info)
+    #define LOG_WARN_NL()       ::Tools::logger.emptyLine(Tools::Logger::Level::warn)
+    #define LOG_ERROR_NL()      ::Tools::logger.emptyLine(Tools::Logger::Level::error)
+    #define LOG_FATAL_NL()      ::Tools::logger.emptyLine(Tools::Logger::Level::fatal)
 #endif
