@@ -79,6 +79,12 @@ namespace Tools {
         Level getLevel() const { return m_level; }
 
         template <typename... Args>
+        void log(const Args... args) const {
+            _printUserText(args...);
+            Serial.println();
+        }
+
+        template <typename... Args>
         void log(   const Level level,
                     const char* const file,
                     const int line,
@@ -250,6 +256,7 @@ namespace Tools {
  */
 #if defined LOG_DISABLE
     #define LOG_NL(NUM)
+    #define LOG_RAW(...)
     #define LOG_TRACE(...)
     #define LOG_DEBUG(...)
     #define LOG_INFO(...)
@@ -258,6 +265,7 @@ namespace Tools {
     #define LOG_FATAL(...)
 #else
     #define LOG_NL(NUM)     ::Tools::Logger::emptyLine(NUM)
+    #define LOG_RAW(...)    ::Tools::logger.log(__VA_ARGS__)
     #define LOG_TRACE(...)  ::Tools::logger.log(Tools::Logger::Level::trace,\
                                 __FILE__, __LINE__, __FUNCTION__, __VA_ARGS__)
     #define LOG_DEBUG(...)  ::Tools::logger.log(Tools::Logger::Level::debug,\

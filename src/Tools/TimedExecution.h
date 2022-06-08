@@ -37,7 +37,7 @@ namespace Tools {
 /**
  * @brief Macro to simplify the call of the wrapper function
  * 
- * @tparam WAIT_TIME    Time to wait for the wrapped function to execute
+ * @tparam WAIT_TIME    Time to wait for the wrapped function to execute (in milliseconds)
  * @tparam INIT_EXEC    If the function will be executed the first time
  * @tparam FUNC         Function to execute (must return void)
  * @param  __VA_ARGS__  Parameters of the function

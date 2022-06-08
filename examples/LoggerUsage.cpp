@@ -32,7 +32,9 @@ void setup()
     LOG_FATAL(32, HEX); // Works in the same way as Serial.print()
 
     LOG_NL();   // Print empty line
+    LOG_RAW("This text will be printed as a normal Serial.print");
     LOG_NL(2);  // Print two empty lines
+    LOG_RAW("This text can also be %s", "formatted");
 
 
     // The logger can be configured anywhere in the code
