@@ -33,7 +33,8 @@ namespace Tools {
             TIMED_EXECUTION(200, true, printLoadingDots);
         }
         LOG_DEBUG_NL();
-        LOG_INFO("WiFi -> Connected to %s with IP: %s", ssid, WiFi.localIP().toString().c_str());
+        LOG_INFO("WiFi -> Connected to %s with IP %s in channgel %d",
+                 ssid, WiFi.localIP().toString().c_str(), WiFi.channel());
         return true;
     }
 

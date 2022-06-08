@@ -5,8 +5,8 @@
 /**
  * WiFi credentials
  */
-constexpr char WIFI_SSID[] = "WIFI_SSID";
-constexpr char WIFI_PASS[] = "WIFI_PASS";
+constexpr char WIFI_SSID[] = "REPLACE_WITH_YOUR_SSID";
+constexpr char WIFI_PASS[] = "REPLACE_WITH_YOUR_PASSWORD";
 
 
 /* * * * * *
