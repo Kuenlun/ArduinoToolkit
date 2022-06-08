@@ -79,10 +79,7 @@ namespace Tools {
         Level getLevel() const { return m_level; }
 
         template <typename... Args>
-        void log(const Args... args) const {
-            _printUserText(args...);
-            Serial.println();
-        }
+        void log(const Args... args) const { _printUserText(args...); }
 
         template <typename... Args>
         void log(   const Level level,
