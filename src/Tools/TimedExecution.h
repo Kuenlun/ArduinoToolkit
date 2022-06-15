@@ -23,7 +23,7 @@ namespace Tools {
     {
         static void wrap(Args... args)
         {
-            static unsigned long lastExecutionTime = t_INIT_EXEC ? t_WAIT_TIME : millis();
+            static unsigned long lastExecutionTime = t_INIT_EXEC ? millis() - t_WAIT_TIME : millis();
             if (millis() - lastExecutionTime >= t_WAIT_TIME) {
                 lastExecutionTime = millis();
                 f(args...);
