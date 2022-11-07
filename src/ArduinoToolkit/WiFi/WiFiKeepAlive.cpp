@@ -22,12 +22,12 @@ namespace AT
         static SemaphoreHandle_t binarySemphrTryToConnectWiFi;
         static std::vector<TaskHandle_t> wifiDependentTasks;
 
-        static bool taskCreated = false;
+        static bool taskCreatedFlag = false;
 
         inline static void assertTaskCreated()
         {
             // Has been the task created?
-            if (!taskCreated)
+            if (!taskCreatedFlag)
             {
                 log_e("WiFi Keep Alive task has not been created yet");
                 ESP_ERROR_CHECK(ESP_ERR_INVALID_STATE);
@@ -60,12 +60,15 @@ namespace AT
                 xSemaphoreTakeFromISR(binarySemphrWiFiConnected, &xHigherPriorityTaskWoken);
                 isr_log_v("binarySemphrWiFiConnected set to 0");
                 // Suspend all tasks included in "wifiDependentTasks" vector
-                for (const TaskHandle_t task : wifiDependentTasks)
+                if (wifiDependentTasks.size())
                 {
-                    vTaskSuspend(task);
-                    isr_log_v("Task %s suspended", pcTaskGetName(task));
+                    for (const TaskHandle_t task : wifiDependentTasks)
+                    {
+                        vTaskSuspend(task);
+                        isr_log_v("Task %s suspended", pcTaskGetName(task));
+                    }
+                    isr_log_d("WiFi dependent tasks suspended");
                 }
-                isr_log_d("WiFi dependent tasks suspended");
                 if (!reason)
                     log_e("WIFI_STA_DISCONNECTED with reason 0");
                 // On reson ASSOC_FAIL wait some time to try to reconnect, otherwise reconnect immediately
@@ -81,12 +84,15 @@ namespace AT
                 xSemaphoreGiveFromISR(binarySemphrWiFiConnected, &xHigherPriorityTaskWoken);
                 isr_log_v("binarySemphrWiFiConnected set to 1");
                 // Resume all tasks included in "wifiDependentTasks" vector
-                for (const TaskHandle_t task : wifiDependentTasks)
+                if (wifiDependentTasks.size())
                 {
-                    xTaskResumeFromISR(task);
-                    isr_log_v("Task %s resumed", pcTaskGetName(task));
+                    for (const TaskHandle_t task : wifiDependentTasks)
+                    {
+                        xTaskResumeFromISR(task);
+                        isr_log_v("Task %s resumed", pcTaskGetName(task));
+                    }
+                    isr_log_d("WiFi dependent tasks resumed");
                 }
-                isr_log_d("WiFi dependent tasks resumed");
                 // Take the "binarySemphrTryToConnectWiFi" to stop reconnecting
                 xSemaphoreTakeFromISR(binarySemphrTryToConnectWiFi, &xHigherPriorityTaskWoken);
                 break;
@@ -140,7 +146,7 @@ namespace AT
         TaskHandle_t createTask(const char *const ssid, const char *const passphrase)
         {
             // Trying to create the task again?
-            if (taskCreated)
+            if (taskCreatedFlag)
             {
                 log_e("WiFi Keep Alive task has already been created");
                 ESP_ERROR_CHECK(ESP_FAIL);
@@ -159,7 +165,9 @@ namespace AT
                 2,
                 &taskHandle,
                 ARDUINO_RUNNING_CORE);
-            taskCreated = true;
+
+            // Set the taskCreatedFlag to true
+            taskCreatedFlag = true;
 
             return taskHandle;
         }
