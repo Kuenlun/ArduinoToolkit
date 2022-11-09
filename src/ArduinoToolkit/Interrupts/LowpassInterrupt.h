@@ -10,6 +10,7 @@ namespace AT
     // IDs for the timers
     static constexpr uint8_t TIMER_LOW_TO_HIGH_ID = 0;
     static constexpr uint8_t TIMER_HIGH_TO_LOW_ID = 1;
+    static constexpr uint8_t LOWPASS_INTERRUPT_QUEUE_SIZE = 10;
 
     /**
      * Declaration of global variables shared among
@@ -17,8 +18,6 @@ namespace AT
      */
     // FreeRTOS mutex to protect Arduino "attachInterrupt" function
     extern SemaphoreHandle_t mutexCreateInterrupt;
-    // FreeRTOS queue to send the filtered interrupts (outputs)
-    extern QueueHandle_t queueLowpassInterrupts;
     // Vector to save the pins used for LowpassInterrupt
     extern std::vector<uint8_t> interruptPinsUsed;
 
@@ -30,7 +29,7 @@ namespace AT
         LowpassInterrupt(const uint8_t mode,
                          const TickType_t lowToHighTimeoutTicks, // Must be >0 ticks
                          const TickType_t highToLowTimeoutTicks, // Must be >0 ticks
-                         const TickType_t noEventTimeoutTicks)
+                         const TickType_t noEventTimeoutTicks = portMAX_DELAY)
             : m_mode(mode),
               m_lowToHighTimeoutTicks(lowToHighTimeoutTicks),
               m_highToLowTimeoutTicks(highToLowTimeoutTicks),
@@ -68,12 +67,9 @@ namespace AT
             }
 
             // Create the queue to send the filtered interrupts (outputs)
-            if (!queueLowpassInterrupts)
-            {
-                queueLowpassInterrupts = xQueueCreate(10, sizeof(bool));
-                if (!queueLowpassInterrupts)
-                    log_e("Could not create the queue");
-            }
+            s_queueLowpassInterrupts = xQueueCreate(LOWPASS_INTERRUPT_QUEUE_SIZE, sizeof(bool));
+            if (!s_queueLowpassInterrupts)
+                log_e("Could not create the queue");
 
             // Create the timers
             s_timerLowToHigh = xTimerCreate(
@@ -110,6 +106,13 @@ namespace AT
             xSemaphoreTake(mutexCreateInterrupt, portMAX_DELAY);
             attachInterrupt(t_pin, isrFunc, CHANGE);
             xSemaphoreGive(mutexCreateInterrupt);
+        }
+
+        static bool receiveLowpassInterrupts(const TickType_t blockTimeTicks = portMAX_DELAY)
+        {
+            bool state;
+            xQueueReceive(s_queueLowpassInterrupts, &state, blockTimeTicks);
+            return state;
         }
 
         inline static bool getState() { return s_FSMstate; }
@@ -179,7 +182,7 @@ namespace AT
 
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
             // Send the filtered interrupt to the queue
-            xQueueSendFromISR(queueLowpassInterrupts, &s_FSMstate, &xHigherPriorityTaskWoken);
+            xQueueSendFromISR(s_queueLowpassInterrupts, &s_FSMstate, &xHigherPriorityTaskWoken);
             // Did this action unblock a higher priority task?
             if (xHigherPriorityTaskWoken)
                 portYIELD_FROM_ISR();
@@ -197,6 +200,8 @@ namespace AT
         // FSM timers
         static TimerHandle_t s_timerHighToLow;
         static TimerHandle_t s_timerLowToHigh;
+        // FreeRTOS queue to send the filtered interrupts (outputs)
+        static QueueHandle_t s_queueLowpassInterrupts;
 
     }; // class LowpassInterrupt
 
@@ -211,5 +216,7 @@ namespace AT
     TimerHandle_t LowpassInterrupt<t_pin>::s_timerHighToLow = nullptr;
     template <uint8_t t_pin>
     TimerHandle_t LowpassInterrupt<t_pin>::s_timerLowToHigh = nullptr;
+    template <uint8_t t_pin>
+    QueueHandle_t LowpassInterrupt<t_pin>::s_queueLowpassInterrupts = nullptr;
 
 } // namespace AT

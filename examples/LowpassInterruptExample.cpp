@@ -16,9 +16,6 @@ void setup()
 {
     pirInt1.begin();
     pirInt2.begin();
-
-    // Delete setup and loop task
-    vTaskDelete(NULL);
 }
 
 /* * * * * *
@@ -26,6 +23,6 @@ void setup()
  * * * * * */
 void loop()
 {
-    // This task has been deleted
-    // Code here won't run
+    log_i("Pin %u got interrupt %d", 1, pirInt1.receiveLowpassInterrupts());
+    log_i("Pin %u got interrupt %d", 2, pirInt2.receiveLowpassInterrupts());
 }
