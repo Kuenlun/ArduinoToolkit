@@ -35,7 +35,7 @@ namespace AT
               m_highToLowTimeoutTicks(highToLowTimeoutTicks),
               m_noEventTimeoutTicks(noEventTimeoutTicks)
         {
-            // Check the pin has already been used
+            // Check if the pin has already been used
             if (std::find(interruptPinsUsed.begin(), interruptPinsUsed.end(), t_pin) != interruptPinsUsed.end())
             {
                 log_e("Pin %d has already been used");
@@ -43,6 +43,12 @@ namespace AT
             }
             // Add the interrupt pin used to the vector
             interruptPinsUsed.push_back(t_pin);
+            // Check that timeouts for changing states are greater than 0 ticks
+            if (!lowToHighTimeoutTicks || !highToLowTimeoutTicks)
+            {
+                log_e("Timeout for changing FSM states must be grater than 0 ticks");
+                ESP_ERROR_CHECK(ESP_ERR_INVALID_ARG);
+            }
 
             /*
             // Create the task only the first time
