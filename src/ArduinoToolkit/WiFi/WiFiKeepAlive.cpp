@@ -6,7 +6,6 @@
 #define CORE_DEBUG_LEVEL ARDUHAL_LOG_LEVEL_VERBOSE
 #include <esp32-hal-log.h>
 #include <WiFi.h>
-#include <Ticker.h>
 
 namespace AT
 {
@@ -34,7 +33,7 @@ namespace AT
             }
         }
 
-        static void timerReconnectWiFiCB()
+        static void timerReconnectWiFiCB(const TimerHandle_t xTimer)
         {
             if (!uxSemaphoreGetCount(binarySemphrWiFiConnected))
             {
@@ -120,8 +119,17 @@ namespace AT
             xSemaphoreGive(binarySemphrTryToConnectWiFi);
 
             // Create the WiFi connection timeout timer
-            static Ticker timerReconnectWiFi;
-            timerReconnectWiFi.attach_ms(WIFI_RECONNECT_WAIT_TIME_MS, timerReconnectWiFiCB);
+            static TimerHandle_t timerReconnectWiFi = nullptr;
+            timerReconnectWiFi = xTimerCreate(
+                "timerReconnectWiFi",
+                pdMS_TO_TICKS(WIFI_RECONNECT_WAIT_TIME_MS),
+                pdTRUE,
+                (void *)0,
+                timerReconnectWiFiCB);
+            if (!timerReconnectWiFi)
+                log_e("Could not create timer");
+            // Start the timer
+            xTimerStart(timerReconnectWiFi, portMAX_DELAY);
 
             // Set the WiFi callback
             WiFi.onEvent(WiFiEventCB);
@@ -172,19 +180,19 @@ namespace AT
             return taskHandle;
         }
 
-        BaseType_t blockUntilWiFiConnected(const TickType_t xTicksToWait)
+        BaseType_t blockUntilConnected(const TickType_t xTicksToWait)
         {
             assertTaskCreated();
             return xQueuePeek(binarySemphrWiFiConnected, (void *)nullptr, xTicksToWait);
         }
 
-        bool isWiFiConnected()
+        bool isConnected()
         {
             assertTaskCreated();
             return uxSemaphoreGetCount(binarySemphrWiFiConnected);
         }
 
-        void addWiFiDependentTask(const TaskHandle_t taskHandle)
+        void addDependentTask(const TaskHandle_t taskHandle)
         {
             wifiDependentTasks.push_back(taskHandle);
         }

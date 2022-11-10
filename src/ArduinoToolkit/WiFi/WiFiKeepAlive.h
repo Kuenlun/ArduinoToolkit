@@ -9,9 +9,9 @@ namespace AT
     {
 
         TaskHandle_t createTask(const char *const ssid, const char *const passphrase);
-        BaseType_t blockUntilWiFiConnected(const TickType_t xTicksToWait=portMAX_DELAY);
-        bool isWiFiConnected();
-        void addWiFiDependentTask(const TaskHandle_t taskHandle);
+        BaseType_t blockUntilConnected(const TickType_t xTicksToWait = portMAX_DELAY);
+        bool isConnected();
+        void addDependentTask(const TaskHandle_t taskHandle);
 
     } // namespace WiFiKeepAlive
 
