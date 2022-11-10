@@ -10,7 +10,38 @@ namespace AT
     // IDs for the timers
     static constexpr uint8_t TIMER_LOW_TO_HIGH_ID = 0;
     static constexpr uint8_t TIMER_HIGH_TO_LOW_ID = 1;
+    static constexpr uint8_t ISR_TO_INTERRUPT_TASK_QUEUE_SIZE = 10;
     static constexpr uint8_t LOWPASS_INTERRUPT_QUEUE_SIZE = 10;
+
+    class Interrupt
+    {
+    protected:
+        Interrupt(const uint8_t mode,
+                  const TickType_t lowToHighTimeoutTicks, // Must be >0 ticks
+                  const TickType_t highToLowTimeoutTicks, // Must be >0 ticks
+                  const TickType_t noEventTimeoutTicks = portMAX_DELAY)
+            : m_mode(mode),
+              m_lowToHighTimeoutTicks(lowToHighTimeoutTicks),
+              m_highToLowTimeoutTicks(highToLowTimeoutTicks),
+              m_noEventTimeoutTicks(noEventTimeoutTicks),
+              m_timerHighToLow(nullptr),
+              m_timerLowToHigh(nullptr)
+        {
+        }
+
+    public:
+        virtual bool getState() = 0;
+
+        virtual bool getPin() = 0;
+
+        const uint8_t m_mode;
+        const TickType_t m_lowToHighTimeoutTicks;
+        const TickType_t m_highToLowTimeoutTicks;
+        const TickType_t m_noEventTimeoutTicks;
+        // FSM timers
+        TimerHandle_t m_timerHighToLow;
+        TimerHandle_t m_timerLowToHigh;
+    };
 
     /**
      * Declaration of global variables shared among
@@ -18,11 +49,22 @@ namespace AT
      */
     // FreeRTOS mutex to protect Arduino "attachInterrupt" function
     extern SemaphoreHandle_t mutexCreateInterrupt;
+    // FreeRTOS queue to send unfiltered interrupts from the ISR to the interrupt task
+    extern QueueHandle_t queueInterrupts;
     // Vector to save the pins used for LowpassInterrupt
-    extern std::vector<uint8_t> interruptPinsUsed;
+    extern std::vector<Interrupt *> interruptPinsUsed;
+    extern SemaphoreHandle_t mutexProtectVector;
+    // FreeRTOS task to handle the interrupts
+    extern void LowpassInterruptTask(void *const parameters);
+
+    struct isrToIntTaskQueueElement
+    {
+        uint8_t pin;
+        bool state;
+    };
 
     template <uint8_t t_pin>
-    class LowpassInterrupt
+    class LowpassInterrupt : public Interrupt
     {
     public:
         // Constructor
@@ -30,30 +72,33 @@ namespace AT
                          const TickType_t lowToHighTimeoutTicks, // Must be >0 ticks
                          const TickType_t highToLowTimeoutTicks, // Must be >0 ticks
                          const TickType_t noEventTimeoutTicks = portMAX_DELAY)
-            : m_mode(mode),
-              m_lowToHighTimeoutTicks(lowToHighTimeoutTicks),
-              m_highToLowTimeoutTicks(highToLowTimeoutTicks),
-              m_noEventTimeoutTicks(noEventTimeoutTicks)
+            : Interrupt(mode, lowToHighTimeoutTicks, highToLowTimeoutTicks, noEventTimeoutTicks)
         {
-            // Check if the pin has already been used
-            if (std::find(interruptPinsUsed.begin(), interruptPinsUsed.end(), t_pin) != interruptPinsUsed.end())
+            if (!mutexProtectVector)
             {
-                log_e("Pin %d has already been used");
-                ESP_ERROR_CHECK(ESP_FAIL);
+                mutexProtectVector = xSemaphoreCreateMutex();
+                if (!mutexProtectVector)
+                    log_e("Could not create mutex");
             }
-            // Add the interrupt pin used to the vector
-            interruptPinsUsed.push_back(t_pin);
-            // Check that timeouts for changing states are greater than 0 ticks
-            if (!lowToHighTimeoutTicks || !highToLowTimeoutTicks)
-            {
-                log_e("Timeout for changing FSM states must be grater than 0 ticks");
-                ESP_ERROR_CHECK(ESP_ERR_INVALID_ARG);
-            }
-
-            /*
+            xSemaphoreTake(mutexProtectVector, portMAX_DELAY);
             // Create the task only the first time
             if (interruptPinsUsed.empty())
             {
+                // Add the interrupt pin used to the vector
+                interruptPinsUsed.push_back(this);
+
+                log_w("Se ha metido un elemento en el vector: %d", interruptPinsUsed.size());
+
+                // Create the mutex to protect the attachment of interrupts if it is not initialized yet
+                mutexCreateInterrupt = xSemaphoreCreateMutex();
+                if (!mutexCreateInterrupt)
+                    log_e("Could not create mutex");
+
+                // Create the queue to send unfiltered interrupts from the ISR to the interrupt task
+                queueInterrupts = xQueueCreate(ISR_TO_INTERRUPT_TASK_QUEUE_SIZE, sizeof(isrToIntTaskQueueElement));
+                if (!queueInterrupts)
+                    log_e("Could not create the queue");
+
                 xTaskCreatePinnedToCore(
                     LowpassInterruptTask,
                     "LowpassInterruptTask",
@@ -63,13 +108,28 @@ namespace AT
                     nullptr,
                     ARDUINO_RUNNING_CORE);
             }
-            */
-            // Create the mutex if it is not initialized yet
-            if (!mutexCreateInterrupt)
+            else
             {
-                mutexCreateInterrupt = xSemaphoreCreateMutex();
-                if (!mutexCreateInterrupt)
-                    log_e("Could not create mutex");
+                // Check if the pin has already been used
+                for (Interrupt *obj : interruptPinsUsed)
+                {
+                    if (t_pin == obj->getPin())
+                    {
+                        log_e("Pin %d has already been used", t_pin);
+                        ESP_ERROR_CHECK(ESP_FAIL);
+                    }
+                }
+
+                // Add the interrupt pin used to the vector
+                interruptPinsUsed.push_back(this);
+            }
+            xSemaphoreGive(mutexProtectVector);
+
+            // Check that timeouts for changing states are greater than 0 ticks
+            if (!lowToHighTimeoutTicks || !highToLowTimeoutTicks)
+            {
+                log_e("Timeout for changing FSM states must be grater than 0 ticks");
+                ESP_ERROR_CHECK(ESP_ERR_INVALID_ARG);
             }
 
             // Create the queue to send the filtered interrupts (outputs)
@@ -78,22 +138,22 @@ namespace AT
                 log_e("Could not create the queue");
 
             // Create the timers
-            s_timerLowToHigh = xTimerCreate(
-                "s_timerLowToHigh",
+            m_timerLowToHigh = xTimerCreate(
+                "m_timerLowToHigh",
                 lowToHighTimeoutTicks,
                 pdFALSE,
                 (void *)TIMER_LOW_TO_HIGH_ID,
                 timerFSMcallback);
-            if (!s_timerLowToHigh)
+            if (!m_timerLowToHigh)
                 log_e("Could not create timer");
 
-            s_timerHighToLow = xTimerCreate(
-                "s_timerHighToLow",
+            m_timerHighToLow = xTimerCreate(
+                "m_timerHighToLow",
                 highToLowTimeoutTicks,
                 pdFALSE,
                 (void *)TIMER_HIGH_TO_LOW_ID,
                 timerFSMcallback);
-            if (!s_timerHighToLow)
+            if (!m_timerHighToLow)
                 log_e("Could not create timer");
         }
 
@@ -121,49 +181,17 @@ namespace AT
             return state;
         }
 
-        inline static bool getState() { return s_FSMstate; }
+        bool getState() override { return s_FSMstate; }
+
+        bool getPin() override { return t_pin; }
 
     private:
         static void IRAM_ATTR isrFunc()
         {
             // Read the pin
-            const uint8_t value = digitalRead(t_pin);
-
+            const isrToIntTaskQueueElement queueElement = {t_pin, digitalRead(t_pin)};
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-            if (s_FSMstate)
-            {
-                // Current FSM state is HIGH
-                if (value)
-                {
-                    isr_log_v("LowpassInterrupt (Pin %u): State remained HIGH", t_pin);
-                    xTimerStopFromISR(s_timerHighToLow, &xHigherPriorityTaskWoken);
-                }
-                else
-                {
-                    if (!xTimerIsTimerActive(s_timerHighToLow))
-                    {
-                        isr_log_v("LowpassInterrupt (Pin %u): State will change to LOW, starting timer", t_pin);
-                        xTimerStartFromISR(s_timerHighToLow, &xHigherPriorityTaskWoken);
-                    }
-                }
-            }
-            else
-            {
-                // Current FSM state is LOW
-                if (value)
-                {
-                    if (!xTimerIsTimerActive(s_timerLowToHigh))
-                    {
-                        isr_log_v("LowpassInterrupt (Pin %u): State will change to HIGH, starting timer", t_pin);
-                        xTimerStartFromISR(s_timerLowToHigh, &xHigherPriorityTaskWoken);
-                    }
-                }
-                else
-                {
-                    isr_log_v("LowpassInterrupt (Pin %u): State remained LOW", t_pin);
-                    xTimerStopFromISR(s_timerLowToHigh, &xHigherPriorityTaskWoken);
-                }
-            }
+            xQueueSendFromISR(queueInterrupts, &queueElement, &xHigherPriorityTaskWoken);
             // Did this action unblock a higher priority task?
             if (xHigherPriorityTaskWoken)
                 portYIELD_FROM_ISR();
@@ -195,17 +223,8 @@ namespace AT
         }
 
     private:
-        const uint8_t m_mode;
-        const TickType_t m_lowToHighTimeoutTicks;
-        const TickType_t m_highToLowTimeoutTicks;
-        const TickType_t m_noEventTimeoutTicks;
-
-    private:
         // Current state of the finite state machine
         static bool s_FSMstate;
-        // FSM timers
-        static TimerHandle_t s_timerHighToLow;
-        static TimerHandle_t s_timerLowToHigh;
         // FreeRTOS queue to send the filtered interrupts (outputs)
         static QueueHandle_t s_queueLowpassInterrupts;
 
@@ -217,11 +236,7 @@ namespace AT
     // Current state of the finite state machine
     template <uint8_t t_pin>
     bool LowpassInterrupt<t_pin>::s_FSMstate = false;
-    // FSM timers
-    template <uint8_t t_pin>
-    TimerHandle_t LowpassInterrupt<t_pin>::s_timerHighToLow = nullptr;
-    template <uint8_t t_pin>
-    TimerHandle_t LowpassInterrupt<t_pin>::s_timerLowToHigh = nullptr;
+    // Queues
     template <uint8_t t_pin>
     QueueHandle_t LowpassInterrupt<t_pin>::s_queueLowpassInterrupts = nullptr;
 
