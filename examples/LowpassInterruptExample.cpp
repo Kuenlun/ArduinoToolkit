@@ -1,28 +1,20 @@
 #include <ArduinoToolkit.h>
 
-/*
 static AT::LowpassInterrupt<1> pirInt1(INPUT_PULLDOWN,
                                        pdMS_TO_TICKS(100),
                                        pdMS_TO_TICKS(1000),
                                        pdMS_TO_TICKS(30000));
+
 static AT::LowpassInterrupt<2> pirInt2(INPUT_PULLDOWN,
-                                       pdMS_TO_TICKS(100),
-                                       pdMS_TO_TICKS(1000),
-                                       pdMS_TO_TICKS(30000));
-*/
-static AT::LowpassInterrupt<4> intBed(INPUT_PULLUP,
-                                      pdMS_TO_TICKS(100),
-                                      pdMS_TO_TICKS(1000),
-                                      pdMS_TO_TICKS(30000));
+                                       1,
+                                       pdMS_TO_TICKS(2000),
+                                       pdMS_TO_TICKS(5000));
 
 /* * * * * *
  *  SETUP  *
  * * * * * */
 void setup()
 {
-    // pirInt1.begin();
-    // pirInt2.begin();
-    intBed.begin();
 }
 
 /* * * * * *
@@ -30,7 +22,11 @@ void setup()
  * * * * * */
 void loop()
 {
-    // log_i("Pin %u got interrupt %d", 1, pirInt1.receiveLowpassInterrupts());
-    // log_i("Pin %u got interrupt %d", 2, pirInt2.receiveLowpassInterrupts());
-    log_i("Got bed interrupt %d", intBed.receiveLowpassInterrupts());
+    // Method "receiveLowpassInterrupts" blocks the task until a LowpassInterrupt happens
+    //log_i("Pin %u got interrupt %d", pirInt1.getPin(), pirInt1.receiveLowpassInterrupts());
+
+    // Method "getState" gets the current state of the FSM
+    log_i("Pin %u state is %d", pirInt1.getPin(), pirInt1.getState());
+    log_i("Pin %u state is %d", pirInt2.getPin(), pirInt2.getState());
+    vTaskDelay(pdMS_TO_TICKS(5000));
 }
