@@ -1,5 +1,3 @@
-#include <vector>
-
 #include <Arduino.h>
 
 #include "LowpassInterrupt.h"
