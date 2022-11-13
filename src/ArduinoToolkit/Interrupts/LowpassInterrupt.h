@@ -7,9 +7,6 @@
 namespace AT
 {
 
-    // IDs for the timers
-    static constexpr uint8_t TIMER_LOW_TO_HIGH_ID = 0;
-    static constexpr uint8_t TIMER_HIGH_TO_LOW_ID = 1;
     static constexpr uint8_t LOWPASS_INTERRUPT_QUEUE_SIZE = 10;
 
     /**
@@ -20,6 +17,27 @@ namespace AT
     extern SemaphoreHandle_t mutexCreateInterrupt;
     // Vector to save the pins used for LowpassInterrupt
     extern std::vector<uint8_t> interruptPinsUsed;
+
+    // IDs for the timers
+    enum struct TimerID : uint8_t
+    {
+        LowToHigh = 0,
+        HighToLow = 1
+    };
+
+    enum struct State : uint8_t
+    {
+        low = 0,
+        high = 1,
+        undefined
+    };
+
+    enum struct Interrupt : uint8_t
+    {
+        noInterrupt = 0,
+        falling,
+        rising
+    };
 
     template <uint8_t t_pin>
     class LowpassInterrupt
@@ -65,31 +83,36 @@ namespace AT
             interruptPinsUsed.push_back(t_pin);
         }
 
-        // Delete copy constructor
-        LowpassInterrupt(LowpassInterrupt &other) = delete;
+        // Copy constructor
+        LowpassInterrupt(const LowpassInterrupt &) = delete;
+        // Move constructor
+        LowpassInterrupt(LowpassInterrupt &&) = delete;
+        // Copy assignment operator
+        LowpassInterrupt &operator=(const LowpassInterrupt &) = delete;
+        // Move assignment operator
+        LowpassInterrupt &operator=(LowpassInterrupt &&) = delete;
+        // Destructor
+        ~LowpassInterrupt() = default;
 
-        // Delete assign operator
-        void operator=(const LowpassInterrupt &) = delete;
-
-        static bool receiveLowpassInterrupts(const TickType_t blockTimeTicks = portMAX_DELAY)
+        static State receiveLowpassInterrupts(const TickType_t blockTimeTicks = portMAX_DELAY)
         {
-            bool state;
+            State state;
             xQueueReceive(s_queueLowpassInterrupts, &state, blockTimeTicks);
             return state;
         }
 
         inline static uint8_t getPin() { return t_pin; }
 
-        inline static bool getState() { return s_FSMstate; }
+        inline static State getState() { return s_FSMstate; }
 
     private:
         static void IRAM_ATTR isrFunc()
         {
             // Read the pin
-            const bool value = digitalRead(t_pin);
+            const State state = (State)digitalRead(t_pin);
 
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-            xQueueOverwriteFromISR(s_queueRawInterrupts, &value, &xHigherPriorityTaskWoken);
+            xQueueOverwriteFromISR(s_queueRawInterrupts, &state, &xHigherPriorityTaskWoken);
             // Did this action unblock a higher priority task?
             if (xHigherPriorityTaskWoken)
                 portYIELD_FROM_ISR();
@@ -98,17 +121,15 @@ namespace AT
         static void IRAM_ATTR timerFSMcallback(const TimerHandle_t xTimer)
         {
             // Change the FSM state depending on which timer expired
-            switch ((uint32_t)pvTimerGetTimerID(xTimer))
+            switch ((TimerID)(uint32_t)pvTimerGetTimerID(xTimer))
             {
-            case TIMER_LOW_TO_HIGH_ID:
-                s_FSMstate = HIGH;
+            case TimerID::LowToHigh:
+                s_FSMstate = State::high;
                 isr_log_d("LowpassInterrupt (Pin %u): State changed to HIGH", t_pin);
                 break;
-            case TIMER_HIGH_TO_LOW_ID:
-                s_FSMstate = LOW;
+            case TimerID::HighToLow:
+                s_FSMstate = State::low;
                 isr_log_d("LowpassInterrupt (Pin %u): State changed to LOW", t_pin);
-                break;
-            default:
                 break;
             }
 
@@ -120,14 +141,73 @@ namespace AT
                 portYIELD_FROM_ISR();
         }
 
+        static Interrupt debouncer(const State state)
+        {
+            static State preState = State::undefined;
+            if (state != preState)
+            {
+                preState = state;
+                switch (state)
+                {
+                case State::low:
+                    return Interrupt::falling;
+                case State::high:
+                    return Interrupt::rising;
+                }
+            }
+            return Interrupt::noInterrupt;
+        }
+
+        static void processInterrupt(const Interrupt interrupt)
+        {
+            switch (s_FSMstate)
+            {
+            case State::high:
+            {
+                switch (interrupt)
+                {
+                case Interrupt::rising:
+                    log_v("LowpassInterrupt (Pin %u): State remained HIGH", t_pin);
+                    xTimerStop(s_timerHighToLow, portMAX_DELAY);
+                    break;
+                case Interrupt::falling:
+                    if (!xTimerIsTimerActive(s_timerHighToLow))
+                    {
+                        log_v("LowpassInterrupt (Pin %u): State will change to LOW, starting timer", t_pin);
+                        xTimerStart(s_timerHighToLow, portMAX_DELAY);
+                    }
+                    break;
+                }
+                break;
+            }
+            case State::low:
+            {
+                switch (interrupt)
+                {
+                case Interrupt::rising:
+                    if (!xTimerIsTimerActive(s_timerLowToHigh))
+                    {
+                        log_v("LowpassInterrupt (Pin %u): State will change to HIGH, starting timer", t_pin);
+                        xTimerStart(s_timerLowToHigh, portMAX_DELAY);
+                    }
+                    break;
+                case Interrupt::falling:
+                    log_v("LowpassInterrupt (Pin %u): State remained LOW", t_pin);
+                    xTimerStop(s_timerLowToHigh, portMAX_DELAY);
+                    break;
+                }
+            }
+            }
+        }
+
         static void LowpassInterruptTask(void *const parameters)
         {
             // Create the queue to send the filtered interrupts (outputs)
-            s_queueRawInterrupts = xQueueCreate(1, sizeof(bool));
+            s_queueRawInterrupts = xQueueCreate(1, sizeof(State));
             if (!s_queueRawInterrupts)
                 log_e("Could not create the queue");
             // Create the queue to send the filtered interrupts (outputs)
-            s_queueLowpassInterrupts = xQueueCreate(LOWPASS_INTERRUPT_QUEUE_SIZE, sizeof(bool));
+            s_queueLowpassInterrupts = xQueueCreate(LOWPASS_INTERRUPT_QUEUE_SIZE, sizeof(State));
             if (!s_queueLowpassInterrupts)
                 log_e("Could not create the queue");
 
@@ -136,7 +216,7 @@ namespace AT
                 "s_timerLowToHigh",
                 s_lowToHighTimeoutTicks,
                 pdFALSE,
-                (void *)TIMER_LOW_TO_HIGH_ID,
+                (void *)TimerID::LowToHigh,
                 timerFSMcallback);
             if (!s_timerLowToHigh)
                 log_e("Could not create timer");
@@ -145,7 +225,7 @@ namespace AT
                 "s_timerHighToLow",
                 s_highToLowTimeoutTicks,
                 pdFALSE,
-                (void *)TIMER_HIGH_TO_LOW_ID,
+                (void *)TimerID::HighToLow,
                 timerFSMcallback);
             if (!s_timerHighToLow)
                 log_e("Could not create timer");
@@ -168,43 +248,14 @@ namespace AT
 
             while (true)
             {
-                static bool value;
-                if (xQueueReceive(s_queueRawInterrupts, &value, s_noEventTimeoutTicks))
+                static State state;
+                if (xQueueReceive(s_queueRawInterrupts, &state, s_noEventTimeoutTicks))
                 {
-                    if (s_FSMstate)
-                    {
-                        // Current FSM state is HIGH
-                        if (value)
-                        {
-                            log_v("LowpassInterrupt (Pin %u): State remained HIGH", t_pin);
-                            xTimerStop(s_timerHighToLow, portMAX_DELAY);
-                        }
-                        else
-                        {
-                            if (!xTimerIsTimerActive(s_timerHighToLow))
-                            {
-                                log_v("LowpassInterrupt (Pin %u): State will change to LOW, starting timer", t_pin);
-                                xTimerStart(s_timerHighToLow, portMAX_DELAY);
-                            }
-                        }
-                    }
+                    const Interrupt interrupt = debouncer(state);
+                    if (interrupt != Interrupt::noInterrupt)
+                        processInterrupt(interrupt);
                     else
-                    {
-                        // Current FSM state is LOW
-                        if (value)
-                        {
-                            if (!xTimerIsTimerActive(s_timerLowToHigh))
-                            {
-                                log_v("LowpassInterrupt (Pin %u): State will change to HIGH, starting timer", t_pin);
-                                xTimerStart(s_timerLowToHigh, portMAX_DELAY);
-                            }
-                        }
-                        else
-                        {
-                            log_v("LowpassInterrupt (Pin %u): State remained LOW", t_pin);
-                            xTimerStop(s_timerLowToHigh, portMAX_DELAY);
-                        }
-                    }
+                        log_w("LowpassInterrupt (Pin %u): Got same interrupt", t_pin);
                 }
                 else
                 {
@@ -216,7 +267,7 @@ namespace AT
 
     private:
         // Current state of the finite state machine
-        static bool s_FSMstate;
+        static State s_FSMstate;
         static uint8_t s_mode;
         static TickType_t s_lowToHighTimeoutTicks;
         static TickType_t s_highToLowTimeoutTicks;
@@ -239,7 +290,7 @@ namespace AT
      */
     // Current state of the finite state machine
     template <uint8_t t_pin>
-    bool LowpassInterrupt<t_pin>::s_FSMstate = false;
+    State LowpassInterrupt<t_pin>::s_FSMstate = State::low;
     template <uint8_t t_pin>
     uint8_t LowpassInterrupt<t_pin>::s_mode;
     template <uint8_t t_pin>
