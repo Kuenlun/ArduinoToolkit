@@ -34,9 +34,9 @@ namespace AT
 
     enum struct Interrupt : uint8_t
     {
-        noInterrupt = 0,
-        falling,
-        rising
+        noInterrupt = 0b00,
+        falling = 0b01,
+        rising = 0b10
     };
 
     template <uint8_t t_pin>
@@ -125,15 +125,17 @@ namespace AT
             {
             case TimerID::LowToHigh:
                 s_FSMstate = State::high;
-                isr_log_d("LowpassInterrupt (Pin %u): State changed to HIGH", t_pin);
+                isr_log_i("LowpassInterrupt (Pin %u): State changed to HIGH", t_pin);
                 break;
             case TimerID::HighToLow:
                 s_FSMstate = State::low;
-                isr_log_d("LowpassInterrupt (Pin %u): State changed to LOW", t_pin);
+                isr_log_i("LowpassInterrupt (Pin %u): State changed to LOW", t_pin);
                 break;
             }
 
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            // Allow the timers to start
+            xSemaphoreGiveFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
             // Send the filtered interrupt to the queue
             xQueueSendFromISR(s_queueLowpassInterrupts, &s_FSMstate, &xHigherPriorityTaskWoken);
             // Did this action unblock a higher priority task?
@@ -167,14 +169,16 @@ namespace AT
                 switch (interrupt)
                 {
                 case Interrupt::rising:
-                    log_v("LowpassInterrupt (Pin %u): State remained HIGH", t_pin);
                     xTimerStop(s_timerHighToLow, portMAX_DELAY);
+                    xSemaphoreGive(s_binarySemaphoreProtectTimerActive);
+                    log_d("LowpassInterrupt (Pin %u): State remained HIGH", t_pin);
                     break;
                 case Interrupt::falling:
-                    if (!xTimerIsTimerActive(s_timerHighToLow))
+                    if (uxSemaphoreGetCount(s_binarySemaphoreProtectTimerActive))
                     {
-                        log_v("LowpassInterrupt (Pin %u): State will change to LOW, starting timer", t_pin);
+                        xSemaphoreTake(s_binarySemaphoreProtectTimerActive, portMAX_DELAY);
                         xTimerStart(s_timerHighToLow, portMAX_DELAY);
+                        log_d("LowpassInterrupt (Pin %u): State will change to LOW, starting timer", t_pin);
                     }
                     break;
                 }
@@ -185,15 +189,17 @@ namespace AT
                 switch (interrupt)
                 {
                 case Interrupt::rising:
-                    if (!xTimerIsTimerActive(s_timerLowToHigh))
+                    if (uxSemaphoreGetCount(s_binarySemaphoreProtectTimerActive))
                     {
-                        log_v("LowpassInterrupt (Pin %u): State will change to HIGH, starting timer", t_pin);
+                        xSemaphoreTake(s_binarySemaphoreProtectTimerActive, portMAX_DELAY);
                         xTimerStart(s_timerLowToHigh, portMAX_DELAY);
+                        log_d("LowpassInterrupt (Pin %u): State will change to HIGH, starting timer", t_pin);
                     }
                     break;
                 case Interrupt::falling:
-                    log_v("LowpassInterrupt (Pin %u): State remained LOW", t_pin);
                     xTimerStop(s_timerLowToHigh, portMAX_DELAY);
+                    xSemaphoreGive(s_binarySemaphoreProtectTimerActive);
+                    log_d("LowpassInterrupt (Pin %u): State remained LOW", t_pin);
                     break;
                 }
             }
@@ -210,6 +216,11 @@ namespace AT
             s_queueLowpassInterrupts = xQueueCreate(LOWPASS_INTERRUPT_QUEUE_SIZE, sizeof(State));
             if (!s_queueLowpassInterrupts)
                 log_e("Could not create the queue");
+            // Create the binary semaphore to protect timers
+            s_binarySemaphoreProtectTimerActive = xSemaphoreCreateBinary();
+            if (!s_binarySemaphoreProtectTimerActive)
+                log_e("Could not create the binary semaphore");
+            xSemaphoreGive(s_binarySemaphoreProtectTimerActive);
 
             // Create the timers
             s_timerLowToHigh = xTimerCreate(
@@ -255,11 +266,11 @@ namespace AT
                     if (interrupt != Interrupt::noInterrupt)
                         processInterrupt(interrupt);
                     else
-                        log_w("LowpassInterrupt (Pin %u): Got same interrupt", t_pin);
+                        log_v("Debouncer (Pin %u): Got same interrupt. Discarting...", t_pin);
                 }
                 else
                 {
-                    log_v("LowpassInterrupt (Pin %u): No event timeout, calling ISR...", t_pin);
+                    log_d("LowpassInterrupt (Pin %u): No event timeout, reading pin value", t_pin);
                     isrFunc();
                 }
             }
@@ -282,6 +293,10 @@ namespace AT
         static QueueHandle_t s_queueRawInterrupts;
         // FreeRTOS queue to send the filtered interrupts (outputs)
         static QueueHandle_t s_queueLowpassInterrupts;
+        // FreeRTOS binary semaphore to protect "xTimerIsTimerActive"
+        // Sometimes when a fast interrupt happens, this function tells that
+        // a timer is still active when in fact it has been stopped.
+        static SemaphoreHandle_t s_binarySemaphoreProtectTimerActive;
 
     }; // class LowpassInterrupt
 
@@ -313,5 +328,7 @@ namespace AT
     QueueHandle_t LowpassInterrupt<t_pin>::s_queueRawInterrupts = nullptr;
     template <uint8_t t_pin>
     QueueHandle_t LowpassInterrupt<t_pin>::s_queueLowpassInterrupts = nullptr;
+    template <uint8_t t_pin>
+    QueueHandle_t LowpassInterrupt<t_pin>::s_binarySemaphoreProtectTimerActive = nullptr;
 
 } // namespace AT
