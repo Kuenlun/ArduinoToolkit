@@ -4,6 +4,8 @@
 
 #include <Arduino.h>
 
+#include "Interrupt.h"
+
 namespace AT
 {
 
@@ -18,30 +20,17 @@ namespace AT
     // Vector to save the pins used for LowpassInterrupt
     extern std::vector<uint8_t> interruptPinsUsed;
 
-    // IDs for the timers
-    enum struct TimerID : uint8_t
-    {
-        LowToHigh = 0,
-        HighToLow = 1
-    };
-
-    enum struct State : uint8_t
-    {
-        low = 0,
-        high = 1,
-        undefined
-    };
-
-    enum struct Interrupt : uint8_t
-    {
-        noInterrupt = 0b00,
-        falling = 0b01,
-        rising = 0b10
-    };
-
     template <uint8_t t_pin>
     class LowpassInterrupt
     {
+    private:
+        // IDs for the timers
+        enum struct TimerID : uint8_t
+        {
+            LowToHigh = 0,
+            HighToLow = 1
+        };
+
     public:
         // Constructor
         LowpassInterrupt(const uint8_t mode,
@@ -94,22 +83,22 @@ namespace AT
         // Destructor
         ~LowpassInterrupt() = default;
 
-        static State receiveLowpassInterrupts(const TickType_t blockTimeTicks = portMAX_DELAY)
+        static LogicState receiveLowpassInterrupts(const TickType_t blockTimeTicks = portMAX_DELAY)
         {
-            State state;
+            LogicState state;
             xQueueReceive(s_queueLowpassInterrupts, &state, blockTimeTicks);
             return state;
         }
 
         inline static uint8_t getPin() { return t_pin; }
 
-        inline static State getState() { return s_FSMstate; }
+        inline static LogicState getState() { return s_FSMstate; }
 
     private:
         static void IRAM_ATTR isrFunc()
         {
             // Read the pin
-            const State state = (State)digitalRead(t_pin);
+            const LogicState state = (LogicState)digitalRead(t_pin);
 
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
             xQueueOverwriteFromISR(s_queueRawInterrupts, &state, &xHigherPriorityTaskWoken);
@@ -124,12 +113,12 @@ namespace AT
             switch ((TimerID)(uint32_t)pvTimerGetTimerID(xTimer))
             {
             case TimerID::LowToHigh:
-                s_FSMstate = State::high;
-                isr_log_i("LowpassInterrupt (Pin %u): State changed to HIGH", t_pin);
+                s_FSMstate = LogicState::high;
+                isr_log_i("LowpassInterrupt (Pin %u): LogicState changed to HIGH", t_pin);
                 break;
             case TimerID::HighToLow:
-                s_FSMstate = State::low;
-                isr_log_i("LowpassInterrupt (Pin %u): State changed to LOW", t_pin);
+                s_FSMstate = LogicState::low;
+                isr_log_i("LowpassInterrupt (Pin %u): LogicState changed to LOW", t_pin);
                 break;
             }
 
@@ -143,17 +132,17 @@ namespace AT
                 portYIELD_FROM_ISR();
         }
 
-        static Interrupt debouncer(const State state)
+        static Interrupt debouncer(const LogicState state)
         {
-            static State preState = State::undefined;
+            static LogicState preState = LogicState::undefined;
             if (state != preState)
             {
                 preState = state;
                 switch (state)
                 {
-                case State::low:
+                case LogicState::low:
                     return Interrupt::falling;
-                case State::high:
+                case LogicState::high:
                     return Interrupt::rising;
                 }
             }
@@ -164,27 +153,27 @@ namespace AT
         {
             switch (s_FSMstate)
             {
-            case State::high:
+            case LogicState::high:
             {
                 switch (interrupt)
                 {
                 case Interrupt::rising:
                     xTimerStop(s_timerHighToLow, portMAX_DELAY);
                     xSemaphoreGive(s_binarySemaphoreProtectTimerActive);
-                    log_d("LowpassInterrupt (Pin %u): State remained HIGH", t_pin);
+                    log_d("LowpassInterrupt (Pin %u): LogicState remained HIGH", t_pin);
                     break;
                 case Interrupt::falling:
                     if (uxSemaphoreGetCount(s_binarySemaphoreProtectTimerActive))
                     {
                         xSemaphoreTake(s_binarySemaphoreProtectTimerActive, portMAX_DELAY);
                         xTimerStart(s_timerHighToLow, portMAX_DELAY);
-                        log_d("LowpassInterrupt (Pin %u): State will change to LOW, starting timer", t_pin);
+                        log_d("LowpassInterrupt (Pin %u): LogicState will change to LOW, starting timer", t_pin);
                     }
                     break;
                 }
                 break;
             }
-            case State::low:
+            case LogicState::low:
             {
                 switch (interrupt)
                 {
@@ -193,13 +182,13 @@ namespace AT
                     {
                         xSemaphoreTake(s_binarySemaphoreProtectTimerActive, portMAX_DELAY);
                         xTimerStart(s_timerLowToHigh, portMAX_DELAY);
-                        log_d("LowpassInterrupt (Pin %u): State will change to HIGH, starting timer", t_pin);
+                        log_d("LowpassInterrupt (Pin %u): LogicState will change to HIGH, starting timer", t_pin);
                     }
                     break;
                 case Interrupt::falling:
                     xTimerStop(s_timerLowToHigh, portMAX_DELAY);
                     xSemaphoreGive(s_binarySemaphoreProtectTimerActive);
-                    log_d("LowpassInterrupt (Pin %u): State remained LOW", t_pin);
+                    log_d("LowpassInterrupt (Pin %u): LogicState remained LOW", t_pin);
                     break;
                 }
             }
@@ -209,11 +198,11 @@ namespace AT
         static void LowpassInterruptTask(void *const parameters)
         {
             // Create the queue to send the filtered interrupts (outputs)
-            s_queueRawInterrupts = xQueueCreate(1, sizeof(State));
+            s_queueRawInterrupts = xQueueCreate(1, sizeof(LogicState));
             if (!s_queueRawInterrupts)
                 log_e("Could not create the queue");
             // Create the queue to send the filtered interrupts (outputs)
-            s_queueLowpassInterrupts = xQueueCreate(LOWPASS_INTERRUPT_QUEUE_SIZE, sizeof(State));
+            s_queueLowpassInterrupts = xQueueCreate(LOWPASS_INTERRUPT_QUEUE_SIZE, sizeof(LogicState));
             if (!s_queueLowpassInterrupts)
                 log_e("Could not create the queue");
             // Create the binary semaphore to protect timers
@@ -259,7 +248,7 @@ namespace AT
 
             while (true)
             {
-                static State state;
+                static LogicState state;
                 if (xQueueReceive(s_queueRawInterrupts, &state, s_noEventTimeoutTicks))
                 {
                     const Interrupt interrupt = debouncer(state);
@@ -278,7 +267,7 @@ namespace AT
 
     private:
         // Current state of the finite state machine
-        static State s_FSMstate;
+        static LogicState s_FSMstate;
         static uint8_t s_mode;
         static TickType_t s_lowToHighTimeoutTicks;
         static TickType_t s_highToLowTimeoutTicks;
@@ -305,7 +294,7 @@ namespace AT
      */
     // Current state of the finite state machine
     template <uint8_t t_pin>
-    State LowpassInterrupt<t_pin>::s_FSMstate = State::low;
+    LogicState LowpassInterrupt<t_pin>::s_FSMstate = LogicState::low;
     template <uint8_t t_pin>
     uint8_t LowpassInterrupt<t_pin>::s_mode;
     template <uint8_t t_pin>

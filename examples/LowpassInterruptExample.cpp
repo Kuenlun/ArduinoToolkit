@@ -1,9 +1,9 @@
 #include <ArduinoToolkit.h>
 
 static AT::LowpassInterrupt<1> intPir(INPUT_PULLDOWN,
-                                       pdMS_TO_TICKS(100),
-                                       pdMS_TO_TICKS(1000),
-                                       pdMS_TO_TICKS(10000));
+                                      pdMS_TO_TICKS(100),
+                                      pdMS_TO_TICKS(1000),
+                                      pdMS_TO_TICKS(10000));
 
 static AT::LowpassInterrupt<42> intBed(INPUT_PULLUP,
                                        pdMS_TO_TICKS(100),
