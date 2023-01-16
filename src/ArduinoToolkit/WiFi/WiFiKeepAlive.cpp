@@ -7,6 +7,8 @@
 #include <esp32-hal-log.h>
 #include <WiFi.h>
 
+#include "WiFiKeepAlive.h"
+
 namespace AT
 {
 
@@ -45,7 +47,35 @@ namespace AT
             }
         }
 
-        static void WiFiEventCB(const WiFiEvent_t event, const WiFiEventInfo_t info)
+        // Suspend all tasks included in "wifiDependentTasks" vector
+        static void suspendWiFiDependentTasks()
+        {
+            if (wifiDependentTasks.size())
+            {
+                for (const TaskHandle_t& task : wifiDependentTasks)
+                {
+                    vTaskSuspend(task);
+                    isr_log_v("Task %s suspended", pcTaskGetName(task));
+                }
+                isr_log_d("WiFi dependent tasks suspended");
+            }
+        }
+
+        // Resume all tasks included in "wifiDependentTasks" vector
+        static void resumeWiFiDependentTasks()
+        {
+            if (wifiDependentTasks.size())
+            {
+                for (const TaskHandle_t& task : wifiDependentTasks)
+                {
+                    xTaskResumeFromISR(task);
+                    isr_log_v("Task %s resumed", pcTaskGetName(task));
+                }
+                isr_log_d("WiFi dependent tasks resumed");
+            }
+        }
+
+        static void WiFiEventCB(const WiFiEvent_t& event, const WiFiEventInfo_t& info)
         {
             BaseType_t xHigherPriorityTaskWoken = pdFALSE;
             switch (event)
@@ -59,15 +89,7 @@ namespace AT
                 xSemaphoreTakeFromISR(binarySemphrWiFiConnected, &xHigherPriorityTaskWoken);
                 isr_log_v("binarySemphrWiFiConnected set to 0");
                 // Suspend all tasks included in "wifiDependentTasks" vector
-                if (wifiDependentTasks.size())
-                {
-                    for (const TaskHandle_t task : wifiDependentTasks)
-                    {
-                        vTaskSuspend(task);
-                        isr_log_v("Task %s suspended", pcTaskGetName(task));
-                    }
-                    isr_log_d("WiFi dependent tasks suspended");
-                }
+                suspendWiFiDependentTasks();
                 if (!reason)
                     log_e("WIFI_STA_DISCONNECTED with reason 0");
                 // On reson ASSOC_FAIL wait some time to try to reconnect, otherwise reconnect immediately
@@ -83,15 +105,7 @@ namespace AT
                 xSemaphoreGiveFromISR(binarySemphrWiFiConnected, &xHigherPriorityTaskWoken);
                 isr_log_v("binarySemphrWiFiConnected set to 1");
                 // Resume all tasks included in "wifiDependentTasks" vector
-                if (wifiDependentTasks.size())
-                {
-                    for (const TaskHandle_t task : wifiDependentTasks)
-                    {
-                        xTaskResumeFromISR(task);
-                        isr_log_v("Task %s resumed", pcTaskGetName(task));
-                    }
-                    isr_log_d("WiFi dependent tasks resumed");
-                }
+                resumeWiFiDependentTasks();
                 // Take the "binarySemphrTryToConnectWiFi" to stop reconnecting
                 xSemaphoreTakeFromISR(binarySemphrTryToConnectWiFi, &xHigherPriorityTaskWoken);
                 break;
@@ -180,7 +194,7 @@ namespace AT
             return taskHandle;
         }
 
-        BaseType_t blockUntilConnected(const TickType_t xTicksToWait)
+        BaseType_t blockUntilConnected(const TickType_t& xTicksToWait)
         {
             assertTaskCreated();
             return xQueuePeek(binarySemphrWiFiConnected, (void *)nullptr, xTicksToWait);
@@ -192,9 +206,16 @@ namespace AT
             return uxSemaphoreGetCount(binarySemphrWiFiConnected);
         }
 
-        void addDependentTask(const TaskHandle_t taskHandle)
+        void addDependentTask(const TaskHandle_t& task)
         {
-            wifiDependentTasks.push_back(taskHandle);
+            // Add the task to the "wifiDependentTasks" vector
+            wifiDependentTasks.push_back(task);
+            // Suspend the task if the WiFi is not enabled
+            if (!isConnected())
+            {
+                log_v("Task %s suspended", pcTaskGetName(task));
+                vTaskSuspend(task);
+            }
         }
 
     } // namespace WiFiKeepAlive
