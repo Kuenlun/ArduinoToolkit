@@ -9,7 +9,7 @@
 namespace AT
 {
 
-    static constexpr uint8_t LOWPASS_INTERRUPT_QUEUE_SIZE = 10;
+    static constexpr uint8_t LOWPASS_INTERRUPT_QUEUE_SIZE{10};
 
     /**
      * Declaration of global variables shared among
@@ -58,7 +58,6 @@ namespace AT
             s_highToLowTimeoutTicks = highToLowTimeoutTicks;
             s_noEventTimeoutTicks = noEventTimeoutTicks;
 
-            // Create the task only the first time
             xTaskCreatePinnedToCore(
                 LowpassInterruptTask,
                 "LowpassInterruptTask",
@@ -98,9 +97,9 @@ namespace AT
         static void IRAM_ATTR isrFunc()
         {
             // Read the pin
-            const LogicState state = (LogicState)digitalRead(t_pin);
+            const LogicState state{(LogicState)digitalRead(t_pin)};
 
-            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            BaseType_t xHigherPriorityTaskWoken{pdFALSE};
             xQueueOverwriteFromISR(s_queueRawInterrupts, &state, &xHigherPriorityTaskWoken);
             // Did this action unblock a higher priority task?
             if (xHigherPriorityTaskWoken)
@@ -122,7 +121,7 @@ namespace AT
                 break;
             }
 
-            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            BaseType_t xHigherPriorityTaskWoken{pdFALSE};
             // Allow the timers to start
             xSemaphoreGiveFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
             // Send the filtered interrupt to the queue
@@ -134,7 +133,7 @@ namespace AT
 
         static Interrupt debouncer(const LogicState state)
         {
-            static LogicState preState = LogicState::undefined;
+            static LogicState preState{LogicState::undefined};
             if (state != preState)
             {
                 preState = state;
@@ -251,7 +250,7 @@ namespace AT
                 static LogicState state;
                 if (xQueueReceive(s_queueRawInterrupts, &state, s_noEventTimeoutTicks))
                 {
-                    const Interrupt interrupt = debouncer(state);
+                    const Interrupt interrupt{debouncer(state)};
                     if (interrupt != Interrupt::noInterrupt)
                         processInterrupt(interrupt);
                     else
@@ -294,7 +293,7 @@ namespace AT
      */
     // Current state of the finite state machine
     template <uint8_t t_pin>
-    LogicState LowpassInterrupt<t_pin>::s_FSMstate = LogicState::low;
+    LogicState LowpassInterrupt<t_pin>::s_FSMstate{LogicState::low};
     template <uint8_t t_pin>
     uint8_t LowpassInterrupt<t_pin>::s_mode;
     template <uint8_t t_pin>
@@ -306,18 +305,18 @@ namespace AT
     TickType_t LowpassInterrupt<t_pin>::s_noEventTimeoutTicks;
     // FreeRTOS task handle
     template <uint8_t t_pin>
-    TaskHandle_t LowpassInterrupt<t_pin>::s_LowpassInterruptTaskHandle = nullptr;
+    TaskHandle_t LowpassInterrupt<t_pin>::s_LowpassInterruptTaskHandle{nullptr};
     // FSM timers
     template <uint8_t t_pin>
-    TimerHandle_t LowpassInterrupt<t_pin>::s_timerHighToLow = nullptr;
+    TimerHandle_t LowpassInterrupt<t_pin>::s_timerHighToLow{nullptr};
     template <uint8_t t_pin>
-    TimerHandle_t LowpassInterrupt<t_pin>::s_timerLowToHigh = nullptr;
+    TimerHandle_t LowpassInterrupt<t_pin>::s_timerLowToHigh{nullptr};
     // Queues
     template <uint8_t t_pin>
-    QueueHandle_t LowpassInterrupt<t_pin>::s_queueRawInterrupts = nullptr;
+    QueueHandle_t LowpassInterrupt<t_pin>::s_queueRawInterrupts{nullptr};
     template <uint8_t t_pin>
-    QueueHandle_t LowpassInterrupt<t_pin>::s_queueLowpassInterrupts = nullptr;
+    QueueHandle_t LowpassInterrupt<t_pin>::s_queueLowpassInterrupts{nullptr};
     template <uint8_t t_pin>
-    QueueHandle_t LowpassInterrupt<t_pin>::s_binarySemaphoreProtectTimerActive = nullptr;
+    QueueHandle_t LowpassInterrupt<t_pin>::s_binarySemaphoreProtectTimerActive{nullptr};
 
 } // namespace AT

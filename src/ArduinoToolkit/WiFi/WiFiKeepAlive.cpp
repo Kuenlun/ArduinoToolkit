@@ -15,7 +15,7 @@ namespace AT
     namespace WiFiKeepAlive
     {
 
-        static constexpr uint32_t WIFI_RECONNECT_WAIT_TIME_MS = 5 * 1000;
+        static constexpr uint32_t WIFI_RECONNECT_WAIT_TIME_MS{5 * 1000};
 
         static const char *wifiSSID;
         static const char *wifiPASS;
@@ -23,7 +23,7 @@ namespace AT
         static SemaphoreHandle_t binarySemphrTryToConnectWiFi;
         static std::vector<TaskHandle_t> wifiDependentTasks;
 
-        static bool taskCreatedFlag = false;
+        static bool taskCreatedFlag{false};
 
         inline static void assertTaskCreated()
         {
@@ -39,7 +39,7 @@ namespace AT
         {
             if (!uxSemaphoreGetCount(binarySemphrWiFiConnected))
             {
-                BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+                BaseType_t xHigherPriorityTaskWoken{pdFALSE};
                 xSemaphoreGiveFromISR(binarySemphrTryToConnectWiFi, &xHigherPriorityTaskWoken);
                 // Did this action unblock a higher priority task?
                 if (xHigherPriorityTaskWoken)
@@ -52,7 +52,7 @@ namespace AT
         {
             if (wifiDependentTasks.size())
             {
-                for (const TaskHandle_t& task : wifiDependentTasks)
+                for (const TaskHandle_t &task : wifiDependentTasks)
                 {
                     vTaskSuspend(task);
                     isr_log_v("Task %s suspended", pcTaskGetName(task));
@@ -66,7 +66,7 @@ namespace AT
         {
             if (wifiDependentTasks.size())
             {
-                for (const TaskHandle_t& task : wifiDependentTasks)
+                for (const TaskHandle_t &task : wifiDependentTasks)
                 {
                     xTaskResumeFromISR(task);
                     isr_log_v("Task %s resumed", pcTaskGetName(task));
@@ -75,15 +75,15 @@ namespace AT
             }
         }
 
-        static void WiFiEventCB(const WiFiEvent_t& event, const WiFiEventInfo_t& info)
+        static void WiFiEventCB(const WiFiEvent_t &event, const WiFiEventInfo_t &info)
         {
-            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            BaseType_t xHigherPriorityTaskWoken{pdFALSE};
             switch (event)
             {
             // Got WIFI_STA_DISCONNECTED event (WiFi disconnected)
             case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
             {
-                const uint8_t reason = info.wifi_sta_disconnected.reason;
+                const uint8_t reason{info.wifi_sta_disconnected.reason};
                 isr_log_w("ARDUINO_EVENT_WIFI_STA_DISCONNECTED (Reason: %u)", reason);
                 // Take the "binarySemphrWiFiConnected" to notify to other tasks that WiFi is OFF
                 xSemaphoreTakeFromISR(binarySemphrWiFiConnected, &xHigherPriorityTaskWoken);
@@ -133,7 +133,7 @@ namespace AT
             xSemaphoreGive(binarySemphrTryToConnectWiFi);
 
             // Create the WiFi connection timeout timer
-            static TimerHandle_t timerReconnectWiFi = nullptr;
+            static TimerHandle_t timerReconnectWiFi{nullptr};
             timerReconnectWiFi = xTimerCreate(
                 "timerReconnectWiFi",
                 pdMS_TO_TICKS(WIFI_RECONNECT_WAIT_TIME_MS),
@@ -165,7 +165,7 @@ namespace AT
             }
         }
 
-        TaskHandle_t createTask(const char *const ssid, const char *const passphrase)
+        TaskHandle_t createDaemon(const char *const ssid, const char *const passphrase)
         {
             // Trying to create the task again?
             if (taskCreatedFlag)
@@ -174,7 +174,7 @@ namespace AT
                 ESP_ERROR_CHECK(ESP_FAIL);
             }
 
-            static TaskHandle_t taskHandle = nullptr;
+            static TaskHandle_t taskHandle{nullptr};
 
             wifiSSID = ssid;
             wifiPASS = passphrase;
@@ -194,7 +194,7 @@ namespace AT
             return taskHandle;
         }
 
-        BaseType_t blockUntilConnected(const TickType_t& xTicksToWait)
+        BaseType_t blockUntilConnected(const TickType_t &xTicksToWait)
         {
             assertTaskCreated();
             return xQueuePeek(binarySemphrWiFiConnected, (void *)nullptr, xTicksToWait);
@@ -206,7 +206,7 @@ namespace AT
             return uxSemaphoreGetCount(binarySemphrWiFiConnected);
         }
 
-        void addDependentTask(const TaskHandle_t& task)
+        void addDependentTask(const TaskHandle_t &task)
         {
             // Add the task to the "wifiDependentTasks" vector
             wifiDependentTasks.push_back(task);

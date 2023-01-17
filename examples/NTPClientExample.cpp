@@ -8,9 +8,9 @@
 void setup()
 {
     // Create the WiFi Keep Alive task
-    AT::WiFiKeepAlive::createTask(WIFI_SSID, WIFI_PASS);
+    AT::WiFiKeepAlive::createDaemon(WIFI_SSID, WIFI_PASS);
 
-    AT::NTPClientTask::createTask();
+    AT::NTPClientTask::createDaemon();
 
     // Delete setup and loop task
     vTaskDelete(NULL);
