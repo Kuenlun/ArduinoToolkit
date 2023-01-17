@@ -5,7 +5,7 @@
 namespace AT
 {
 
-    namespace WiFiKeepAlive
+    namespace WiFiDaemon
     {
 
         TaskHandle_t createDaemon(const char *const ssid, const char *const passphrase);
@@ -13,6 +13,6 @@ namespace AT
         bool isConnected();
         void addDependentTask(const TaskHandle_t &taskHandle);
 
-    } // namespace WiFiKeepAlive
+    } // namespace WiFiDaemon
 
 } // namespace AT

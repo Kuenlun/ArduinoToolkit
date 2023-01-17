@@ -1,14 +1,14 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
-#include "WiFiKeepAlive.h"
+#include "WiFiDaemon.h"
 
-#include "NTPClientTask.h"
+#include "NTPClientDaemon.h"
 
 namespace AT
 {
 
-    namespace NTPClientTask
+    namespace NTPClientDaemon
     {
 
         // Define NTP Client to get time
@@ -21,7 +21,7 @@ namespace AT
         static void timerUpdateDateTimeCB(const TimerHandle_t xTimer)
         {
             BaseType_t xHigherPriorityTaskWoken{pdFALSE};
-            if (WiFiKeepAlive::isConnected())
+            if (WiFiDaemon::isConnected())
             {
                 if (timeClient.forceUpdate())
                 {
@@ -93,6 +93,6 @@ namespace AT
             taskCreatedFlag = true;
         }
 
-    } // namespace NTPClientTask
+    } // namespace NTPClientDaemon
 
 } // namespace AT

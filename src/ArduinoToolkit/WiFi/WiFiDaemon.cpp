@@ -7,12 +7,12 @@
 #include <esp32-hal-log.h>
 #include <WiFi.h>
 
-#include "WiFiKeepAlive.h"
+#include "WiFiDaemon.h"
 
 namespace AT
 {
 
-    namespace WiFiKeepAlive
+    namespace WiFiDaemon
     {
 
         static constexpr uint32_t WIFI_RECONNECT_WAIT_TIME_MS{5 * 1000};
@@ -218,6 +218,6 @@ namespace AT
             }
         }
 
-    } // namespace WiFiKeepAlive
+    } // namespace WiFiDaemon
 
 } // namespace AT
