@@ -63,7 +63,7 @@ namespace AT
             // Trying to create the task again?
             if (taskCreatedFlag)
             {
-                log_e("WiFi Keep Alive task has already been created");
+                log_e("NTPClient daemon has already been created");
                 ESP_ERROR_CHECK(ESP_FAIL);
             }
 

@@ -30,7 +30,7 @@ namespace AT
             // Has been the task created?
             if (!taskCreatedFlag)
             {
-                log_e("WiFi Keep Alive task has not been created yet");
+                log_e("WiFi daemon task has not been created yet");
                 ESP_ERROR_CHECK(ESP_ERR_INVALID_STATE);
             }
         }
@@ -119,7 +119,7 @@ namespace AT
                 portYIELD_FROM_ISR();
         }
 
-        static void WiFiKeepAliveTask(void *const parameters)
+        static void WiFiDaemonTask(void *const parameters)
         {
             // Create a binary semaphore to know when WiFi is connected
             binarySemphrWiFiConnected = xSemaphoreCreateBinary();
@@ -170,7 +170,7 @@ namespace AT
             // Trying to create the task again?
             if (taskCreatedFlag)
             {
-                log_e("WiFi Keep Alive task has already been created");
+                log_e("WiFi daemon task has already been created");
                 ESP_ERROR_CHECK(ESP_FAIL);
             }
 
@@ -180,8 +180,8 @@ namespace AT
             wifiPASS = passphrase;
 
             xTaskCreatePinnedToCore(
-                WiFiKeepAliveTask,
-                "WiFiKeepAliveTask",
+                WiFiDaemonTask,
+                "WiFiDaemonTask",
                 3 * 1024,
                 nullptr,
                 2,
