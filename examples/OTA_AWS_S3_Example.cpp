@@ -1,7 +1,3 @@
-#include <ArduinoToolkit.h>
-
-#include "secrets.h"
-
 /**
  * NOTE
  * AT::OTA::executeOTA(OTA_URL) does not work when the current
@@ -10,6 +6,10 @@
  * The OTA_URL should be like the following for AWS S3:
  * "bucket-name.s3.eu-central-1.amazonaws.com/sketchname.bin"
  */
+
+#include <ArduinoToolkit.h>
+
+#include "secrets.h"
 
 /* * * * * *
  *  SETUP  *

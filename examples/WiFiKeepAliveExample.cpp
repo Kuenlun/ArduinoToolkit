@@ -9,7 +9,6 @@ void setup()
 {
     // Create the WiFi daemon task
     AT::WiFiDaemon::createDaemon(WIFI_SSID, WIFI_PASS);
-
     // Delete setup and loop task
     vTaskDelete(NULL);
 }
