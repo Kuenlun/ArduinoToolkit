@@ -206,8 +206,11 @@ namespace AT
             return uxSemaphoreGetCount(binarySemphrWiFiConnected);
         }
 
-        void addDependentTask(const TaskHandle_t &task)
+        void addDependentTask(TaskHandle_t task)
         {
+            // If task is nullptr get the current task handle
+            if (!task)
+                task = xTaskGetCurrentTaskHandle();
             // Add the task to the "wifiDependentTasks" vector
             wifiDependentTasks.push_back(task);
             // Suspend the task if the WiFi is not enabled
