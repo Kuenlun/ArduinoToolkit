@@ -196,11 +196,11 @@ namespace AT
 
         static void LowpassInterruptTask(void *const parameters)
         {
-            // Create the queue to send the filtered interrupts (outputs)
+            // Create the queue to send raw interrupts (outputs)
             s_queueRawInterrupts = xQueueCreate(1, sizeof(LogicState));
             if (!s_queueRawInterrupts)
                 log_e("Could not create the queue");
-            // Create the queue to send the filtered interrupts (outputs)
+            // Create the queue to send filtered interrupts (outputs)
             s_queueLowpassInterrupts = xQueueCreate(LOWPASS_INTERRUPT_QUEUE_SIZE, sizeof(LogicState));
             if (!s_queueLowpassInterrupts)
                 log_e("Could not create the queue");
