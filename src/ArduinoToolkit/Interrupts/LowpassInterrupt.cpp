@@ -17,4 +17,10 @@ namespace AT
     // Vector to save the pins used for LowpassInterrupt
     std::vector<uint8_t> interruptPinsUsed;
 
+    // Block until lowpass interrupt happens on any pin
+    BaseType_t blockUntilLowpassInterrupt(const TickType_t xTicksToWait)
+    {
+        return xQueuePeek(semaphoreLowpassInterruptToRead, (void *)nullptr, xTicksToWait);
+    }
+
 } // namespace AT

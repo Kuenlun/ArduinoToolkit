@@ -23,6 +23,9 @@ namespace AT
     // Vector to save the pins used for LowpassInterrupt
     extern std::vector<uint8_t> interruptPinsUsed;
 
+    // Block until lowpass interrupt happens on any pin
+    BaseType_t blockUntilLowpassInterrupt(const TickType_t xTicksToWait = portMAX_DELAY);
+
     template <uint8_t t_pin>
     class LowpassInterrupt
     {
@@ -88,6 +91,7 @@ namespace AT
         static LogicState receiveLowpassInterrupts(const TickType_t blockTimeTicks = portMAX_DELAY)
         {
             LogicState state;
+            xSemaphoreTake(semaphoreLowpassInterruptToRead, blockTimeTicks);
             xQueueReceive(s_queueLowpassInterrupts, &state, blockTimeTicks);
             return state;
         }

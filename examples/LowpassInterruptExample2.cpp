@@ -22,12 +22,10 @@ void setup()
  * * * * * */
 void loop()
 {
-    // Blocks the task until the semaphore is released
-    xSemaphoreTake(AT::semaphoreLowpassInterruptToRead, portMAX_DELAY);
+    // Blocks the task until any lowpass interrupt arrives
+    AT::blockUntilLowpassInterrupt();
     if (intPir1.getLowpassInterruptsWaiting())
         log_i("Pin %u got interrupt %d", intPir1.getPin(), intPir1.receiveLowpassInterrupts());
-    // Blocks the task until the semaphore is released
-    xSemaphoreTake(AT::semaphoreLowpassInterruptToRead, portMAX_DELAY);
     if (intPir2.getLowpassInterruptsWaiting())
         log_i("Pin %u got interrupt %d", intPir2.getPin(), intPir2.receiveLowpassInterrupts());
 }
