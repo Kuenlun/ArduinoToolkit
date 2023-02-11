@@ -17,8 +17,14 @@ namespace AT
      */
     // FreeRTOS mutex to protect Arduino "attachInterrupt" function
     extern SemaphoreHandle_t mutexCreateInterrupt;
+    // Counting semaphore to show if any of the LowpassInterrupt template
+    // classes have unread filtered interrupts
+    extern SemaphoreHandle_t semaphoreLowpassInterruptToRead;
     // Vector to save the pins used for LowpassInterrupt
     extern std::vector<uint8_t> interruptPinsUsed;
+
+    // Block until lowpass interrupt happens on any pin
+    BaseType_t blockUntilLowpassInterrupt(const TickType_t xTicksToWait = portMAX_DELAY);
 
     template <uint8_t t_pin>
     class LowpassInterrupt
@@ -85,8 +91,14 @@ namespace AT
         static LogicState receiveLowpassInterrupts(const TickType_t blockTimeTicks = portMAX_DELAY)
         {
             LogicState state;
+            xSemaphoreTake(semaphoreLowpassInterruptToRead, blockTimeTicks);
             xQueueReceive(s_queueLowpassInterrupts, &state, blockTimeTicks);
             return state;
+        }
+
+        static UBaseType_t getLowpassInterruptsWaiting()
+        {
+            return uxQueueMessagesWaiting(s_queueLowpassInterrupts);
         }
 
         inline static uint8_t getPin() { return t_pin; }
@@ -122,10 +134,13 @@ namespace AT
             }
 
             BaseType_t xHigherPriorityTaskWoken{pdFALSE};
-            // Allow the timers to start
+            // Allow the timers to start (this is here to fix FreeRTOS timers
+            // as they work with queues and are not instantaneous)
             xSemaphoreGiveFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
             // Send the filtered interrupt to the queue
             xQueueSendFromISR(s_queueLowpassInterrupts, &s_FSMstate, &xHigherPriorityTaskWoken);
+            // Enable binary semaphore to report that there are unprocessed filtered interrupts in any of the templated classes
+            xSemaphoreGiveFromISR(semaphoreLowpassInterruptToRead, &xHigherPriorityTaskWoken);
             // Did this action unblock a higher priority task?
             if (xHigherPriorityTaskWoken)
                 portYIELD_FROM_ISR();
@@ -228,6 +243,15 @@ namespace AT
                 timerFSMcallback);
             if (!s_timerHighToLow)
                 log_e("Could not create timer");
+
+            // Create the counting semaphore if it is not initialized yet
+            if (!semaphoreLowpassInterruptToRead)
+            {
+                // Initialize the counting semaphore to 0 with uxMaxCount set to UBaseType_t max value
+                semaphoreLowpassInterruptToRead = xSemaphoreCreateCounting(-1, 0);
+                if (!semaphoreLowpassInterruptToRead)
+                    log_e("Could not create counting semaphore");
+            }
 
             // Create the mutex if it is not initialized yet
             if (!mutexCreateInterrupt)
