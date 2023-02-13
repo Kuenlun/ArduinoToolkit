@@ -166,45 +166,43 @@ namespace AT
                 return true;
         }
 
-        static IRAM_ATTR BaseType_t processInterrupt(const Interrupt rawInterrupt)
+        static IRAM_ATTR void processInterrupt(const Interrupt rawInterrupt, BaseType_t *const pxHigherPriorityTaskWoken)
         {
-            BaseType_t xHigherPriorityTaskWoken{pdFALSE};
             if (isChangingInterrupt(rawInterrupt))
             {
                 s_lastRawInterrupt = rawInterrupt;
                 switch (rawInterrupt)
                 {
                 case Interrupt::falling:
-                    xTimerChangePeriodFromISR(s_timerStateChanger, s_highToLowTimeoutTicks, &xHigherPriorityTaskWoken);
+                    xTimerChangePeriodFromISR(s_timerStateChanger, s_highToLowTimeoutTicks, pxHigherPriorityTaskWoken);
                     break;
                 case Interrupt::rising:
-                    xTimerChangePeriodFromISR(s_timerStateChanger, s_lowToHighTimeoutTicks, &xHigherPriorityTaskWoken);
+                    xTimerChangePeriodFromISR(s_timerStateChanger, s_lowToHighTimeoutTicks, pxHigherPriorityTaskWoken);
                     break;
                 }
-                xTimerStartFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
+                xTimerStartFromISR(s_timerStateChanger, pxHigherPriorityTaskWoken);
                 isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer started",
                           getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
             }
             else
             {
-                xTimerStopFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
+                xTimerStopFromISR(s_timerStateChanger, pxHigherPriorityTaskWoken);
                 isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer stopped",
                           getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
             }
-            return xHigherPriorityTaskWoken;
         }
 
         static IRAM_ATTR void isrFunc()
         {
-            // Reset no activity timer
             BaseType_t xHigherPriorityTaskWoken{pdFALSE};
+            // Reset no activity timer
             xTimerResetFromISR(s_timerNoActivity, &xHigherPriorityTaskWoken);
             // Read the GPIO
             const bool rawPinValue{digitalRead(t_pin)};
             const Interrupt rawInterrupt{debouncer((LogicState)rawPinValue)};
             // Process the rawInterrupt
             if (rawInterrupt != Interrupt::noInterrupt)
-                xHigherPriorityTaskWoken = processInterrupt(rawInterrupt);
+                processInterrupt(rawInterrupt, &xHigherPriorityTaskWoken);
             else
                 isr_log_v("[INT PIN %u] (DEBOUNCER) Discarting same interrupt", getPin());
             // Did this action unblock a higher priority task?
