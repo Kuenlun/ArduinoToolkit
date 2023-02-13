@@ -6,7 +6,7 @@
 
 #include "Interrupt.h"
 
-#define DELAY_FISRST_STATE_CHANGE true
+// #define DELAY_FISRST_STATE_CHANGE true
 
 namespace AT
 {
@@ -63,11 +63,6 @@ namespace AT
             s_queueLowpassInterrupts = xQueueCreate(LOWPASS_INTERRUPT_QUEUE_SIZE, sizeof(Interrupt));
             if (!s_queueLowpassInterrupts)
                 log_e("[INT PIN %u] Could not create the queue", getPin());
-            // Create the binary semaphore to protect timers
-            s_binarySemaphoreProtectTimerActive = xSemaphoreCreateBinary();
-            if (!s_binarySemaphoreProtectTimerActive)
-                log_e("[INT PIN %u] Could not create the binary semaphore", getPin());
-            xSemaphoreGive(s_binarySemaphoreProtectTimerActive);
 
             // Create the timer to change states
             s_timerStateChanger = xTimerCreate(
@@ -161,15 +156,22 @@ namespace AT
             return Interrupt::noInterrupt;
         }
 
+        static inline bool isChangingInterrupt(const Interrupt rawInterrupt)
+        {
+            if (rawInterrupt == Interrupt::noInterrupt ||
+                s_FSMstate == LogicState::low && rawInterrupt == Interrupt::falling ||
+                s_FSMstate == LogicState::high && rawInterrupt == Interrupt::rising)
+                return false;
+            else
+                return true;
+        }
+
         static IRAM_ATTR BaseType_t processInterrupt(const Interrupt rawInterrupt)
         {
             BaseType_t xHigherPriorityTaskWoken{pdFALSE};
-
-            if (s_FSMstate == LogicState::low && rawInterrupt == Interrupt::rising ||
-                s_FSMstate == LogicState::high && rawInterrupt == Interrupt::falling)
+            if (isChangingInterrupt(rawInterrupt))
             {
-                // When "rawInterrupt" tries to change state
-                xSemaphoreTakeFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
+                s_lastRawInterrupt = rawInterrupt;
                 switch (rawInterrupt)
                 {
                 case Interrupt::falling:
@@ -183,48 +185,11 @@ namespace AT
                 isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer started",
                           getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
             }
-            else if (s_FSMstate == LogicState::low && rawInterrupt == Interrupt::falling ||
-                     s_FSMstate == LogicState::high && rawInterrupt == Interrupt::rising)
-            {
-                // When "rawInterrupt" tries to reset state change
-                xTimerStopFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
-                xSemaphoreGiveFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
-                isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer stopped",
-                          getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
-            }
             else
             {
-                // When "s_FSMstate" is LogicState::undefined
-#if DELAY_FISRST_STATE_CHANGE == true
-                if (uxSemaphoreGetCount(s_binarySemaphoreProtectTimerActive))
-                {
-                    xSemaphoreTakeFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
-                    switch (rawInterrupt)
-                    {
-                    case Interrupt::falling:
-                        xTimerChangePeriodFromISR(s_timerStateChanger, s_highToLowTimeoutTicks, &xHigherPriorityTaskWoken);
-                        break;
-                    case Interrupt::rising:
-                        xTimerChangePeriodFromISR(s_timerStateChanger, s_lowToHighTimeoutTicks, &xHigherPriorityTaskWoken);
-                        break;
-                    }
-                    xTimerStartFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
-                    s_auxFirstInterrupt = rawInterrupt;
-                    isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer started",
-                              getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
-                }
-                else
-                {
-                    xTimerStopFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
-                    xSemaphoreGiveFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
-                    isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer stopped",
-                              getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
-                }
-#else
-                s_auxFirstInterrupt = rawInterrupt;
-                xSemaphoreTakeFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
-                timerStateChangerCallback(s_timerStateChanger);
-#endif
+                xTimerStopFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
+                isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer stopped",
+                          getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
             }
             return xHigherPriorityTaskWoken;
         }
@@ -234,8 +199,9 @@ namespace AT
             // Reset no activity timer
             BaseType_t xHigherPriorityTaskWoken{pdFALSE};
             xTimerResetFromISR(s_timerNoActivity, &xHigherPriorityTaskWoken);
-            // Read the kind of interrupt
-            const Interrupt rawInterrupt{debouncer((LogicState)digitalRead(t_pin))};
+            // Read the GPIO
+            const bool rawPinValue{digitalRead(t_pin)};
+            const Interrupt rawInterrupt{debouncer((LogicState)rawPinValue)};
             // Process the rawInterrupt
             if (rawInterrupt != Interrupt::noInterrupt)
                 xHigherPriorityTaskWoken = processInterrupt(rawInterrupt);
@@ -256,37 +222,20 @@ namespace AT
 
         static void IRAM_ATTR timerStateChangerCallback(const TimerHandle_t xTimer)
         {
+            log_i("[INT PIN %u] Got interrupt %s", getPin(), InterruptToStr(s_lastRawInterrupt));
             // Update the state
-            switch (s_FSMstate)
+            switch (s_lastRawInterrupt)
             {
-            case LogicState::high:
+            case Interrupt::falling:
                 s_FSMstate = LogicState::low;
                 break;
-            case LogicState::low:
+            case Interrupt::rising:
                 s_FSMstate = LogicState::high;
                 break;
-            default:
-            {
-                switch (s_auxFirstInterrupt)
-                {
-                case Interrupt::falling:
-                    s_FSMstate = LogicState::low;
-                    break;
-                case Interrupt::rising:
-                    s_FSMstate = LogicState::high;
-                    break;
-                }
-                break;
             }
-            }
-
             BaseType_t xHigherPriorityTaskWoken{pdFALSE};
-            // Notify that the timer is available
-            xSemaphoreGiveFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
             // Send the filtered interrupt to the queue
-            const Interrupt interrupt{s_FSMstate == LogicState::low ? Interrupt::falling : Interrupt::rising};
-            log_i("[INT PIN %u] Got interrupt %s", getPin(), InterruptToStr(interrupt));
-            xQueueSendFromISR(s_queueLowpassInterrupts, &interrupt, &xHigherPriorityTaskWoken);
+            xQueueSendFromISR(s_queueLowpassInterrupts, &s_lastRawInterrupt, &xHigherPriorityTaskWoken);
             // Enable binary semaphore to report that there are unprocessed filtered interrupts in any of the templated classes
             xSemaphoreGiveFromISR(semaphoreLowpassInterruptToRead, &xHigherPriorityTaskWoken);
             // Did this action unblock a higher priority task?
@@ -302,6 +251,8 @@ namespace AT
         static TickType_t s_highToLowTimeoutTicks;
         // Timeout to wait when no events happen
         static TickType_t s_noActivityTimeoutTicks;
+        // Last raw interrupt (so that "s_timerStateChanger" knows which state to change to)
+        static Interrupt s_lastRawInterrupt;
         // FSM timers
         static TimerHandle_t s_timerStateChanger;
         static TimerHandle_t s_timerNoActivity;
@@ -309,10 +260,6 @@ namespace AT
         static Interrupt s_auxFirstInterrupt;
         // FreeRTOS queue to send the filtered interrupts (outputs)
         static QueueHandle_t s_queueLowpassInterrupts;
-        // FreeRTOS binary semaphore to protect "xTimerIsTimerActive"
-        // Sometimes when a fast interrupt happens, this function tells that
-        // a timer is still active when in fact it has been stopped.
-        static SemaphoreHandle_t s_binarySemaphoreProtectTimerActive;
 
     }; // class LowpassInterrupt
 
@@ -331,6 +278,9 @@ namespace AT
     // Timeout to wait when no events happen
     template <uint8_t t_pin>
     TickType_t LowpassInterrupt<t_pin>::s_noActivityTimeoutTicks;
+    // Last raw interrupt (so that "s_timerStateChanger" knows which state to change to)
+    template <uint8_t t_pin>
+    Interrupt LowpassInterrupt<t_pin>::s_lastRawInterrupt{Interrupt::noInterrupt};
     // FSM timers
     template <uint8_t t_pin>
     TimerHandle_t LowpassInterrupt<t_pin>::s_timerStateChanger{nullptr};
@@ -342,7 +292,5 @@ namespace AT
     // Queues
     template <uint8_t t_pin>
     QueueHandle_t LowpassInterrupt<t_pin>::s_queueLowpassInterrupts{nullptr};
-    template <uint8_t t_pin>
-    QueueHandle_t LowpassInterrupt<t_pin>::s_binarySemaphoreProtectTimerActive{nullptr};
 
 } // namespace AT
