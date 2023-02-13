@@ -134,11 +134,6 @@ namespace AT
             return uxQueueMessagesWaiting(s_queueLowpassInterrupts);
         }
 
-        static UBaseType_t getLowpassInterruptsWaiting()
-        {
-            return uxQueueMessagesWaiting(s_queueLowpassInterrupts);
-        }
-
         inline static uint8_t getPin() { return t_pin; }
 
         inline static LogicState getState() { return s_FSMstate; }
