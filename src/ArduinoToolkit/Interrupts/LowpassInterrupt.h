@@ -169,36 +169,28 @@ namespace AT
                 s_FSMstate == LogicState::high && rawInterrupt == Interrupt::falling)
             {
                 // When "rawInterrupt" tries to change state
-                if (uxSemaphoreGetCount(s_binarySemaphoreProtectTimerActive))
+                xSemaphoreTakeFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
+                switch (rawInterrupt)
                 {
-                    xSemaphoreTakeFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
+                case Interrupt::falling:
+                    xTimerChangePeriodFromISR(s_timerStateChanger, s_highToLowTimeoutTicks, &xHigherPriorityTaskWoken);
+                    break;
+                case Interrupt::rising:
                     xTimerChangePeriodFromISR(s_timerStateChanger, s_lowToHighTimeoutTicks, &xHigherPriorityTaskWoken);
-                    xTimerStartFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
-                    isr_log_v("[INT PIN %u] Got %s when state is %s -> Timer started",
-                              getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
+                    break;
                 }
-                else
-                {
-                    isr_log_e("[INT PIN %u] (IMPOSSIBLE) Got %s when state is %s -> Timer already started",
-                              getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
-                }
+                xTimerStartFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
+                isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer started",
+                          getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
             }
             else if (s_FSMstate == LogicState::low && rawInterrupt == Interrupt::falling ||
                      s_FSMstate == LogicState::high && rawInterrupt == Interrupt::rising)
             {
                 // When "rawInterrupt" tries to reset state change
-                if (!uxSemaphoreGetCount(s_binarySemaphoreProtectTimerActive))
-                {
-                    xTimerStopFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
-                    xSemaphoreGiveFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
-                    isr_log_v("[INT PIN %u] Got %s when state is %s -> Timer stopped",
-                              getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
-                }
-                else
-                {
-                    isr_log_e("[INT PIN %u] (IMPOSSIBLE) Got %s when state is %s -> Timer was not started",
-                              getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
-                }
+                xTimerStopFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
+                xSemaphoreGiveFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
+                isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer stopped",
+                          getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
             }
             else
             {
@@ -215,28 +207,18 @@ namespace AT
                     case Interrupt::rising:
                         xTimerChangePeriodFromISR(s_timerStateChanger, s_lowToHighTimeoutTicks, &xHigherPriorityTaskWoken);
                         break;
-                    default:
-                        break;
                     }
                     xTimerStartFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
                     s_auxFirstInterrupt = rawInterrupt;
-                    isr_log_v("[INT PIN %u] Got %s when state is %s -> Timer started",
+                    isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer started",
                               getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
                 }
                 else
                 {
-                    if (s_auxFirstInterrupt != rawInterrupt)
-                    {
-                        xTimerStopFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
-                        xSemaphoreGiveFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
-                        isr_log_v("[INT PIN %u] Got %s when state is %s -> Timer stopped",
-                                  getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
-                    }
-                    else
-                    {
-                        isr_log_e("[INT PIN %u] (IMPOSSIBLE) Got %s when state is %s -> Timer already started",
-                                  getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
-                    }
+                    xTimerStopFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
+                    xSemaphoreGiveFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
+                    isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer stopped",
+                              getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
                 }
 #else
                 s_auxFirstInterrupt = rawInterrupt;
