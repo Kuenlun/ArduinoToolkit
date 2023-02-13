@@ -6,7 +6,7 @@
 
 #include "Interrupt.h"
 
-#define DELAY_FISRST_STATE_CHANGE false
+#define DELAY_FISRST_STATE_CHANGE true
 
 namespace AT
 {
@@ -207,7 +207,17 @@ namespace AT
                 if (uxSemaphoreGetCount(s_binarySemaphoreProtectTimerActive))
                 {
                     xSemaphoreTakeFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
-                    xTimerChangePeriodFromISR(s_timerStateChanger, s_lowToHighTimeoutTicks, &xHigherPriorityTaskWoken);
+                    switch (rawInterrupt)
+                    {
+                    case Interrupt::falling:
+                        xTimerChangePeriodFromISR(s_timerStateChanger, s_highToLowTimeoutTicks, &xHigherPriorityTaskWoken);
+                        break;
+                    case Interrupt::rising:
+                        xTimerChangePeriodFromISR(s_timerStateChanger, s_lowToHighTimeoutTicks, &xHigherPriorityTaskWoken);
+                        break;
+                    default:
+                        break;
+                    }
                     xTimerStartFromISR(s_timerStateChanger, &xHigherPriorityTaskWoken);
                     s_auxFirstInterrupt = rawInterrupt;
                     isr_log_v("[INT PIN %u] Got %s when state is %s -> Timer started",
@@ -230,6 +240,7 @@ namespace AT
                 }
 #else
                 s_auxFirstInterrupt = rawInterrupt;
+                xSemaphoreTakeFromISR(s_binarySemaphoreProtectTimerActive, &xHigherPriorityTaskWoken);
                 timerStateChangerCallback(s_timerStateChanger);
 #endif
             }
