@@ -8,7 +8,7 @@
 void setup()
 {
     // Create the WiFi daemon task
-    AT::WiFiDaemon::createDaemon(WIFI_SSID, WIFI_PASS);
+    static AT::WiFiDaemon wifiDaemon(WIFI_SSID, WIFI_PASS, 2);
     // Create the NTPClient datetime daemon
     AT::NTPClientDaemon::createDaemon();
     // Delete setup and loop task

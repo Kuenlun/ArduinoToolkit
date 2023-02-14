@@ -7,9 +7,13 @@
  * * * * * */
 void setup()
 {
-    // Create the WiFi daemon task
-    AT::WiFiDaemon::createDaemon(WIFI_SSID, WIFI_PASS);
+    {
+        // Create the WiFi daemon task
+        AT::WiFiDaemon wifiDaemon(WIFI_SSID, WIFI_PASS, 2);
+        vTaskDelay(pdMS_TO_TICKS(10000));
+    }
     // Delete setup and loop task
+    log_i("Deleting setup and loop task");
     vTaskDelete(NULL);
 }
 
