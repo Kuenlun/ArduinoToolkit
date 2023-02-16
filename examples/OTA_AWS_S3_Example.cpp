@@ -16,12 +16,15 @@
  * * * * * */
 void setup()
 {
-    // Create the WiFi daemon task
-    static AT::WiFiDaemon wifiDaemon(WIFI_SSID, WIFI_PASS, 2);
-    // Wait for WiFi to connect
-    AT::WiFiDaemon::blockUntilConnected();
-    // Execute OTA
-    AT::OTA::executeOTA("OTA_URL");
+    {
+        // Create the WiFi daemon task
+        auto wifiDaemon{AT::WiFiDaemon::instance(WIFI_SSID, WIFI_PASS, 2)};
+        // Wait for WiFi to connect
+        AT::WiFiDaemon::blockUntilConnected();
+        // Execute OTA
+        AT::OTA::executeOTA(OTA_URL);
+        // WiFiDaemon is destroyed here as it goes out of scope
+    }
     // Delete setup and loop task
     vTaskDelete(NULL);
 }

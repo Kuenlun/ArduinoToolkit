@@ -11,7 +11,7 @@
 namespace AT
 {
 
-    bool WiFiDaemon::s_taskCreatedFlag{false};
+    TaskHandle_t WiFiDaemon::s_taskHandle{nullptr};
     const char *WiFiDaemon::s_wifiSSID{nullptr};
     const char *WiFiDaemon::s_wifiPASS{nullptr};
     SemaphoreHandle_t WiFiDaemon::s_binarySemphrWiFiConnected{nullptr};
@@ -104,6 +104,7 @@ namespace AT
 
     void WiFiDaemon::WiFiDaemonTask(void *const parameters)
     {
+        log_i("WiFiDaemonTask created");
         // Create a binary semaphore to know when WiFi is connected
         s_binarySemphrWiFiConnected = xSemaphoreCreateBinary();
         if (!s_binarySemphrWiFiConnected)
@@ -152,7 +153,7 @@ namespace AT
                            const char *const passphrase,
                            const UBaseType_t uxPriority)
     {
-        setDaemonCreatedFlag(s_taskCreatedFlag);
+        log_d("Instanciating WiFiDaemon object");
 
         s_wifiSSID = ssid;
         s_wifiPASS = passphrase;
@@ -163,13 +164,16 @@ namespace AT
             3 * 1024,
             nullptr,
             uxPriority,
-            &getTaskHandle(),
+            &s_taskHandle,
             ARDUINO_RUNNING_CORE);
     }
 
     WiFiDaemon::~WiFiDaemon()
     {
-        s_taskCreatedFlag = false;
+
+        if (s_taskHandle)
+            vTaskDelete(s_taskHandle);
+        log_i("WiFiDaemon Deleted");
     }
 
     BaseType_t WiFiDaemon::blockUntilConnected(const TickType_t &xTicksToWait)
