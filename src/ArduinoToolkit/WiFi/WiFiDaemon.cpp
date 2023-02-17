@@ -11,13 +11,81 @@
 namespace AT
 {
 
-    TaskHandle_t WiFiDaemon::s_taskHandle{nullptr};
+    /**
+     * WiFiDaemon class static variables
+     */
     const char *WiFiDaemon::s_wifiSSID{nullptr};
     const char *WiFiDaemon::s_wifiPASS{nullptr};
     SemaphoreHandle_t WiFiDaemon::s_binarySemphrWiFiConnected{nullptr};
     SemaphoreHandle_t WiFiDaemon::s_binarySemphrTryToConnectWiFi{nullptr};
     std::vector<TaskHandle_t> WiFiDaemon::s_wifiDependentTasks;
 
+    /**
+     * WiFiDaemon class public methods
+     */
+    BaseType_t WiFiDaemon::blockUntilConnected(const TickType_t xTicksToWait)
+    {
+        if (s_binarySemphrWiFiConnected)
+            return xQueuePeek(s_binarySemphrWiFiConnected, (void *)nullptr, xTicksToWait);
+        return pdFALSE;
+    }
+
+    bool WiFiDaemon::isConnected()
+    {
+        if (s_binarySemphrWiFiConnected)
+            return uxSemaphoreGetCount(s_binarySemphrWiFiConnected);
+        return false;
+    }
+
+    void WiFiDaemon::addDependentTask(TaskHandle_t task)
+    {
+        // If task is nullptr get the current task handle
+        if (!task)
+            task = xTaskGetCurrentTaskHandle();
+        // Add the task to the "s_wifiDependentTasks" vector
+        s_wifiDependentTasks.push_back(task);
+        // Suspend the task if the WiFi is not enabled
+        if (!isConnected())
+        {
+            log_v("Task %s suspended", pcTaskGetName(task));
+            vTaskSuspend(task);
+        }
+    }
+
+    /**
+     * WiFiDaemon class protected methods
+     */
+    WiFiDaemon::WiFiDaemon(const char *const ssid,
+                           const char *const passphrase,
+                           const UBaseType_t uxPriority)
+        : m_taskHandle(nullptr)
+    {
+        s_wifiSSID = ssid;
+        s_wifiPASS = passphrase;
+
+        log_v("Instanciating WiFiDaemon object");
+
+        xTaskCreatePinnedToCore(
+            WiFiDaemonTask,
+            "WiFiDaemonTask",
+            3 * 1024,
+            nullptr,
+            uxPriority,
+            &m_taskHandle,
+            ARDUINO_RUNNING_CORE);
+    }
+
+    WiFiDaemon::~WiFiDaemon()
+    {
+
+        if (m_taskHandle)
+            vTaskDelete(m_taskHandle);
+        log_i("WiFiDaemon Deleted");
+    }
+
+    /**
+     * WiFiDaemon class private methods
+     */
     void WiFiDaemon::timerReconnectWiFiCB(const TimerHandle_t xTimer)
     {
         if (!uxSemaphoreGetCount(s_binarySemphrWiFiConnected))
@@ -146,62 +214,6 @@ namespace AT
                 log_d("Connecting to %s", s_wifiSSID);
                 WiFi.begin(s_wifiSSID, s_wifiPASS);
             }
-        }
-    }
-
-    WiFiDaemon::WiFiDaemon(const char *const ssid,
-                           const char *const passphrase,
-                           const UBaseType_t uxPriority)
-    {
-        log_d("Instanciating WiFiDaemon object");
-
-        s_wifiSSID = ssid;
-        s_wifiPASS = passphrase;
-
-        xTaskCreatePinnedToCore(
-            WiFiDaemonTask,
-            "WiFiDaemonTask",
-            3 * 1024,
-            nullptr,
-            uxPriority,
-            &s_taskHandle,
-            ARDUINO_RUNNING_CORE);
-    }
-
-    WiFiDaemon::~WiFiDaemon()
-    {
-
-        if (s_taskHandle)
-            vTaskDelete(s_taskHandle);
-        log_i("WiFiDaemon Deleted");
-    }
-
-    BaseType_t WiFiDaemon::blockUntilConnected(const TickType_t &xTicksToWait)
-    {
-        if (s_binarySemphrWiFiConnected)
-            return xQueuePeek(s_binarySemphrWiFiConnected, (void *)nullptr, xTicksToWait);
-        return pdFALSE;
-    }
-
-    bool WiFiDaemon::isConnected()
-    {
-        if (s_binarySemphrWiFiConnected)
-            return uxSemaphoreGetCount(s_binarySemphrWiFiConnected);
-        return false;
-    }
-
-    void WiFiDaemon::addDependentTask(TaskHandle_t task)
-    {
-        // If task is nullptr get the current task handle
-        if (!task)
-            task = xTaskGetCurrentTaskHandle();
-        // Add the task to the "s_wifiDependentTasks" vector
-        s_wifiDependentTasks.push_back(task);
-        // Suspend the task if the WiFi is not enabled
-        if (!isConnected())
-        {
-            log_v("Task %s suspended", pcTaskGetName(task));
-            vTaskSuspend(task);
         }
     }
 

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <WiFi.h>
 #include <Arduino.h>
+#include <WiFi.h>
 
-#include "../Daemon.h"
+#include "Daemon.h"
 
 namespace AT
 {
@@ -11,7 +11,7 @@ namespace AT
     class WiFiDaemon : public Daemon<WiFiDaemon>
     {
     public:
-        static BaseType_t blockUntilConnected(const TickType_t &xTicksToWait = portMAX_DELAY);
+        static BaseType_t blockUntilConnected(const TickType_t xTicksToWait = portMAX_DELAY);
         static bool isConnected();
         static void addDependentTask(TaskHandle_t task = nullptr);
 
@@ -29,8 +29,10 @@ namespace AT
         static void WiFiDaemonTask(void *const parameters);
 
     private:
+        TaskHandle_t m_taskHandle;
+
+    private:
         static constexpr uint32_t s_WIFI_RECONNECT_WAIT_TIME_MS{5 * 1000};
-        static TaskHandle_t s_taskHandle;
         static const char *s_wifiSSID;
         static const char *s_wifiPASS;
         static SemaphoreHandle_t s_binarySemphrWiFiConnected;
