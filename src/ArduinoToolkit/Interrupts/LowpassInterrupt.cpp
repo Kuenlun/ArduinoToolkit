@@ -17,9 +17,23 @@ namespace AT
     // Vector to save the pins used for LowpassInterrupt
     std::vector<uint8_t> interruptPinsUsed;
 
+
+    void initializeCountingSemaphore()
+    {
+        // Create the counting semaphore if it is not initialized yet
+        if (!semaphoreLowpassInterruptToRead)
+        {
+            // Initialize the counting semaphore to 0 with uxMaxCount set to UBaseType_t max value
+            semaphoreLowpassInterruptToRead = xSemaphoreCreateCounting(-1, 0);
+            if (!semaphoreLowpassInterruptToRead)
+                log_e("Could not create counting semaphore");
+        }
+    }
+
     // Block until lowpass interrupt happens on any pin
     BaseType_t blockUntilLowpassInterrupt(const TickType_t xTicksToWait)
     {
+        initializeCountingSemaphore();
         return xQueuePeek(semaphoreLowpassInterruptToRead, (void *)nullptr, xTicksToWait);
     }
 

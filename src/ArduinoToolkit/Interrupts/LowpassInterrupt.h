@@ -6,8 +6,6 @@
 
 #include "Interrupt.h"
 
-// #define DELAY_FISRST_STATE_CHANGE true
-
 namespace AT
 {
 
@@ -25,6 +23,8 @@ namespace AT
     // Vector to save the pins used for LowpassInterrupt
     extern std::vector<uint8_t> interruptPinsUsed;
 
+    // Create the counting semaphore if it is not initialized yet
+    void initializeCountingSemaphore();
     // Block until lowpass interrupt happens on any pin
     BaseType_t blockUntilLowpassInterrupt(const TickType_t xTicksToWait = portMAX_DELAY);
 
@@ -85,13 +85,7 @@ namespace AT
             xTimerStart(s_timerNoActivity, portMAX_DELAY);
 
             // Create the counting semaphore if it is not initialized yet
-            if (!semaphoreLowpassInterruptToRead)
-            {
-                // Initialize the counting semaphore to 0 with uxMaxCount set to UBaseType_t max value
-                semaphoreLowpassInterruptToRead = xSemaphoreCreateCounting(-1, 0);
-                if (!semaphoreLowpassInterruptToRead)
-                    log_e("[INT PIN %u] Could not create counting semaphore", getPin());
-            }
+            initializeCountingSemaphore();
 
             // Create the mutex if it is not initialized yet
             if (!mutexCreateInterrupt)
