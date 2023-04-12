@@ -1,4 +1,4 @@
-#include "Interrupt.h"
+#include "ArduinoToolkit/Interrupt/BasicInterrupt.h"
 
 namespace AT
 {

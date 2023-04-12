@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <Arduino.h>
+#include "ArduinoToolkit/WiFi/WiFiDaemon.h"
 
 namespace AT
 {

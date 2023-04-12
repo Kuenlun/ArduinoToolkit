@@ -2,10 +2,9 @@
  * Based on Arvind Ravulavaru sketch <https://github.com/arvindr21>
  */
 
-#include <WiFi.h>
 #include <Update.h>
 
-#include "OTA_AWS_S3.h"
+#include "ArduinoToolkit/WiFi/OTA_AWS_S3.h"
 
 namespace AT
 {
@@ -52,7 +51,7 @@ namespace AT
             while (s_wifiClient.available())
             {
                 const String line{s_wifiClient.readStringUntil('\n')};
-                log_v("%s", line.c_str());
+                AT_LOG_V("%s", line.c_str());
 
                 // Check if the HTTP response is 200
                 if (!headerResponseSteps.statusCode)
@@ -63,7 +62,7 @@ namespace AT
                         const std::string_view responseValue{line.c_str() + sizeof(stringBeginning)};
                         if (line.indexOf("200 OK") < 0)
                         {
-                            log_e("Got a non 200 status code from server: %s", responseValue.data());
+                            AT_LOG_E("Got a non 200 status code from server: %s", responseValue.data());
                             return 0;
                         }
                         headerResponseSteps.statusCode = true;
@@ -78,14 +77,14 @@ namespace AT
                         line.startsWith(stringBeginning))
                     {
                         const std::string_view responseValue{line.c_str() + sizeof(stringBeginning)};
-                        log_d("Got %s payload", responseValue.data());
+                        AT_LOG_D("Got %s payload", responseValue.data());
                         if (responseValue.find("application/octet-stream") != std::string::npos)
                         {
-                            log_i("Response Content-Type is valid");
+                            AT_LOG_I("Response Content-Type is valid");
                         }
                         else
                         {
-                            log_e("Response Content-Type is not valid");
+                            AT_LOG_E("Response Content-Type is not valid");
                             return 0;
                         }
                         headerResponseSteps.contentType = true;
@@ -100,7 +99,7 @@ namespace AT
                         line.startsWith(stringBeginning))
                     {
                         const std::string_view responseValue{line.c_str() + sizeof(stringBeginning)};
-                        log_d("Content length is %s", responseValue.data());
+                        AT_LOG_D("Content length is %s", responseValue.data());
                         outContentLength = std::strtoul(responseValue.data(), nullptr, 10);
                         headerResponseSteps.contentLength = true;
                         continue;
@@ -127,7 +126,7 @@ namespace AT
             }
             else
             {
-                log_e("Invalid server header response");
+                AT_LOG_E("Invalid server header response");
                 return 0;
             }
         }
@@ -136,12 +135,12 @@ namespace AT
         {
             if (s_wifiClient.connect(host.c_str(), port))
             {
-                log_i("Connection to host succeeded");
+                AT_LOG_I("Connection to host succeeded");
                 // Send HTTP request header
                 s_wifiClient.printf("GET /%s HTTP/1.0\n", bin.c_str());
                 s_wifiClient.printf("Host: %s\n", host.c_str());
                 s_wifiClient.printf("Connection: close\n\n");
-                log_d("HTTP request header sent");
+                AT_LOG_D("HTTP request header sent");
 
                 // Wait for server response
                 const TickType_t timeStartTicks{xTaskGetTickCount()};
@@ -150,7 +149,7 @@ namespace AT
                 {
                     if (xTaskGetTickCount() - timeStartTicks > requestTimeoutTicks)
                     {
-                        log_e("Client timeout");
+                        AT_LOG_E("Client timeout");
                         s_wifiClient.stop();
                         return 0;
                     }
@@ -163,7 +162,7 @@ namespace AT
             else
             {
                 // Connection failed
-                log_e("Could not connect to host: %s on port %u", host.c_str(), port);
+                AT_LOG_E("Could not connect to host: %s on port %u", host.c_str(), port);
             }
             return 0;
         }
@@ -176,8 +175,8 @@ namespace AT
         {
             // Split the URL into host and bin
             const HostBin hostBinStruct(url);
-            log_v("Host: %s", hostBinStruct.getHost().c_str());
-            log_v("Bin:  %s", hostBinStruct.getBin().c_str());
+            AT_LOG_V("Host: %s", hostBinStruct.getHost().c_str());
+            AT_LOG_V("Bin:  %s", hostBinStruct.getBin().c_str());
 
             // Connect to AWS S3 and request the bin file
             const size_t contentLength{requestS3BinFile(hostBinStruct.getHost(), hostBinStruct.getBin(), port)};
@@ -190,27 +189,27 @@ namespace AT
             // Fetch the bin file and update the ESP32
             if (Update.begin(contentLength))
             {
-                log_i("OTA update started");
+                AT_LOG_I("OTA update started");
                 const size_t written = Update.writeStream(s_wifiClient);
                 // Check how many bytes have been written
                 if (written == contentLength)
-                    log_d("Written %lu / %lu", written, contentLength);
+                    AT_LOG_D("Written %lu / %lu", written, contentLength);
                 else
-                    log_w("Written %lu / %lu", written, contentLength);
+                    AT_LOG_W("Written %lu / %lu", written, contentLength);
                 // Check if update completed successfully
                 if (Update.end())
                 {
-                    log_i("Update successfully completed");
-                    log_i("ESP can now be rebooted");
+                    AT_LOG_I("Update successfully completed");
+                    AT_LOG_I("ESP can now be rebooted");
                 }
                 else
                 {
-                    log_e("An error occurred during the update: %u", Update.getError());
+                    AT_LOG_E("An error occurred during the update: %u", Update.getError());
                 }
             }
             else
             {
-                log_e("Not enough space to begin OTA");
+                AT_LOG_E("Not enough space to begin OTA");
             }
             s_wifiClient.flush();
             s_wifiClient.stop();

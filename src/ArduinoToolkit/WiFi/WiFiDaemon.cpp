@@ -1,6 +1,6 @@
 #include <vector>
 
-#include "WiFiDaemon.h"
+#include "ArduinoToolkit/WiFi/WiFiDaemon.h"
 
 namespace AT
 {
@@ -45,9 +45,9 @@ namespace AT
                 for (const TaskHandle_t &task : wifiDependentTasks)
                 {
                     vTaskSuspend(task);
-                    isr_log_v("Task %s suspended", pcTaskGetName(task));
+                    AT_LOG_V("Task %s suspended", pcTaskGetName(task));
                 }
-                isr_log_d("WiFi dependent tasks suspended");
+                AT_LOG_D("WiFi dependent tasks suspended");
             }
         }
 
@@ -59,9 +59,9 @@ namespace AT
                 for (const TaskHandle_t &task : wifiDependentTasks)
                 {
                     xTaskResumeFromISR(task);
-                    isr_log_v("Task %s resumed", pcTaskGetName(task));
+                    AT_LOG_V("Task %s resumed", pcTaskGetName(task));
                 }
-                isr_log_d("WiFi dependent tasks resumed");
+                AT_LOG_D("WiFi dependent tasks resumed");
             }
         }
 
@@ -74,14 +74,14 @@ namespace AT
             case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
             {
                 const uint8_t reason{info.wifi_sta_disconnected.reason};
-                isr_log_w("ARDUINO_EVENT_WIFI_STA_DISCONNECTED (Reason: %u)", reason);
+                AT_LOG_W("ARDUINO_EVENT_WIFI_STA_DISCONNECTED (Reason: %u)", reason);
                 // Take the "binarySemphrWiFiConnected" to notify to other tasks that WiFi is OFF
                 xSemaphoreTakeFromISR(binarySemphrWiFiConnected, &xHigherPriorityTaskWoken);
-                isr_log_v("binarySemphrWiFiConnected set to 0");
+                AT_LOG_V("binarySemphrWiFiConnected set to 0");
                 // Suspend all tasks included in "wifiDependentTasks" vector
                 suspendWiFiDependentTasks();
                 if (!reason)
-                    log_e("WIFI_STA_DISCONNECTED with reason 0");
+                    AT_LOG_E("WIFI_STA_DISCONNECTED with reason 0");
                 // On reson ASSOC_FAIL wait some time to try to reconnect, otherwise reconnect immediately
                 if (reason != WIFI_REASON_ASSOC_FAIL)
                     xSemaphoreGiveFromISR(binarySemphrTryToConnectWiFi, &xHigherPriorityTaskWoken);
@@ -90,10 +90,10 @@ namespace AT
             // Got WIFI_STA_GOT_IP event (WiFi connection stablished)
             case ARDUINO_EVENT_WIFI_STA_GOT_IP:
             {
-                isr_log_i("ARDUINO_EVENT_WIFI_STA_GOT_IP. WiFi connected");
+                AT_LOG_I("ARDUINO_EVENT_WIFI_STA_GOT_IP. WiFi connected");
                 // Give the "binarySemphrWiFiConnected" to notify to other tasks that WiFi is ON
                 xSemaphoreGiveFromISR(binarySemphrWiFiConnected, &xHigherPriorityTaskWoken);
-                isr_log_v("binarySemphrWiFiConnected set to 1");
+                AT_LOG_V("binarySemphrWiFiConnected set to 1");
                 // Resume all tasks included in "wifiDependentTasks" vector
                 resumeWiFiDependentTasks();
                 // Take the "binarySemphrTryToConnectWiFi" to stop reconnecting
@@ -111,16 +111,16 @@ namespace AT
 
         static void WiFiDaemonTask(void *const parameters)
         {
-            log_i("WiFiDaemonTask created");
+            AT_LOG_I("WiFiDaemonTask created");
             // Create a binary semaphore to know when WiFi is connected
             binarySemphrWiFiConnected = xSemaphoreCreateBinary();
             if (!binarySemphrWiFiConnected)
-                log_e("Could not create binary semaphore");
+                AT_LOG_E("Could not create binary semaphore");
 
             // Create binary semaphore to know when to reconnect WiFi
             binarySemphrTryToConnectWiFi = xSemaphoreCreateBinary();
             if (!binarySemphrTryToConnectWiFi)
-                log_e("Could not create binary semaphore");
+                AT_LOG_E("Could not create binary semaphore");
             xSemaphoreGive(binarySemphrTryToConnectWiFi);
 
             // Create the WiFi connection timeout timer
@@ -132,7 +132,7 @@ namespace AT
                 (void *)0,
                 timerReconnectWiFiCB);
             if (!timerReconnectWiFi)
-                log_e("Could not create timer");
+                AT_LOG_E("Could not create timer");
             // Start the timer
             xTimerStart(timerReconnectWiFi, portMAX_DELAY);
 
@@ -149,7 +149,7 @@ namespace AT
                 if (xSemaphoreTake(binarySemphrTryToConnectWiFi, portMAX_DELAY))
                 {
                     // Connect to WiFi
-                    log_d("Connecting to %s", wifiSSID);
+                    AT_LOG_D("Connecting to %s", wifiSSID);
                     WiFi.begin(wifiSSID, wifiPASS);
                 }
             }
@@ -164,8 +164,8 @@ namespace AT
         {
             if (taskHandle)
             {
-                log_w("WiFi daemon already started");
-                AT_ASSERT(false);
+                AT_LOG_W("WiFi daemon already started");
+                ASSERT(false);
                 return;
             }
 
@@ -187,11 +187,11 @@ namespace AT
             if (taskHandle)
             {
                 vTaskDelete(taskHandle);
-                log_i("WiFiDaemon Deleted");
+                AT_LOG_I("WiFiDaemon Deleted");
             }
             else
             {
-                log_w("WiFiDaemon not started");
+                AT_LOG_W("WiFiDaemon not started");
             }
         }
 
@@ -219,7 +219,7 @@ namespace AT
             // Suspend the task if the WiFi is not enabled
             if (!isConnected())
             {
-                log_v("Task %s suspended", pcTaskGetName(task));
+                AT_LOG_V("Task %s suspended", pcTaskGetName(task));
                 vTaskSuspend(task);
             }
         }

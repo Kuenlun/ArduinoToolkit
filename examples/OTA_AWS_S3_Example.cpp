@@ -7,7 +7,7 @@
  * "bucket-name.s3.eu-central-1.amazonaws.com/sketchname.bin"
  */
 
-#include <ArduinoToolkit.h>
+#include "ArduinoToolkit/WiFi/OTA_AWS_S3.h"
 
 #include "secrets.h"
 
@@ -16,15 +16,14 @@
  * * * * * */
 void setup()
 {
-    {
-        // Create the WiFi daemon task
-        auto wifiDaemon{AT::WiFiDaemon::instance(WIFI_SSID, WIFI_PASS, 2)};
-        // Wait for WiFi to connect
-        AT::WiFiDaemon::blockUntilConnected();
-        // Execute OTA
-        AT::OTA::executeOTA(OTA_URL);
-        // WiFiDaemon is destroyed here as it goes out of scope
-    }
+    // Start the WiFi Daemon
+    AT::WiFiDaemon::start(WIFI_SSID, WIFI_PASS, 2);
+    // Wait for WiFi to connect
+    AT::WiFiDaemon::blockUntilConnected();
+    // Execute OTA
+    AT::OTA::executeOTA("OTA_URL");
+    // WiFiDaemon is destroyed here as it goes out of scope
+    AT::WiFiDaemon::stop();
     // Delete setup and loop task
     vTaskDelete(NULL);
 }

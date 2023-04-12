@@ -1,7 +1,9 @@
 #pragma once
 
 #include <memory>
-#include <Arduino.h>
+
+#include "ArduinoToolkit/Core/Base.h"
+#include "ArduinoToolkit/Core/Log.h"
 
 namespace AT
 {
@@ -17,7 +19,7 @@ namespace AT
             if (isInstanced())
             {
                 sharedInstance = s_instance.lock();
-                log_w("Daemon already created");
+                AT_LOG_W("Daemon already created");
             }
             else
             {
@@ -40,7 +42,7 @@ namespace AT
         {
             if (!isInstanced())
             {
-                log_e("Daemon not created");
+                AT_LOG_E("Daemon not created");
                 ESP_ERROR_CHECK(ESP_ERR_INVALID_STATE);
             }
         }

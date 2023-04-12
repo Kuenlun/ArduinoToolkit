@@ -1,8 +1,10 @@
 #pragma once
 
-#ifdef AT_DEBUG
+#include "ArduinoToolkit/Core/Base.h"
+
+#ifdef DEBUG
 // Macro that disables scheduler and enters an infinite loop if the given condition 'x' is not met
-#define AT_ASSERT(x)       \
+#define ASSERT(x)          \
     if (!(x))              \
     {                      \
         vTaskSuspendAll(); \
@@ -10,5 +12,5 @@
             ;              \
     }
 #else
-#define AT_ASSERT(x)
+#define ASSERT(x)
 #endif
