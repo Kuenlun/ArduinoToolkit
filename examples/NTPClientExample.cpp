@@ -1,4 +1,4 @@
-#include <ArduinoToolkit.h>
+#include "ArduinoToolkit/WiFi/NTPClientDaemon.h"
 
 #include "secrets.h"
 
@@ -7,21 +7,17 @@
  * * * * * */
 void setup()
 {
-    {
-        // Create the WiFi Daemon
-        auto wifiDaemon{AT::WiFiDaemon::instance(WIFI_SSID, WIFI_PASS, 2)};
-        {
-            // Create the NTPClient datetime daemon
-            auto ntpDaemon{AT::NTPClientDaemon::instance()};
-            vTaskDelay(pdMS_TO_TICKS(10000));
-        }
-        {
-            // Create the NTPClient datetime daemon
-            auto ntpDaemon{AT::NTPClientDaemon::instance()};
-            vTaskDelay(pdMS_TO_TICKS(10000));
-        }
-        // WiFiDaemon is destroyed here as it goes out of scope
-    }
+    // Start the WiFi Daemon
+    AT::WiFiDaemon::start(WIFI_SSID, WIFI_PASS, 2);
+    // Wait for WiFi to connect
+    AT::WiFiDaemon::blockUntilConnected();
+    // Start the NTPClient datetime daemon
+    AT::NTPClientDaemon::start();
+    vTaskDelay(pdMS_TO_TICKS(30 * 1000));
+    // Stop the NTPClient datetime daemon
+    AT::NTPClientDaemon::stop();
+    // Stop the WiFi Daemon
+    AT::WiFiDaemon::stop();
     // Delete setup and loop task
     vTaskDelete(NULL);
 }

@@ -2,9 +2,8 @@
 
 #include <vector>
 
-#include <Arduino.h>
-
-#include "Interrupt.h"
+#include "ArduinoToolkit/Core.h"
+#include "ArduinoToolkit/Interrupt/BasicInterrupt.h"
 
 namespace AT
 {
@@ -42,13 +41,13 @@ namespace AT
             // Check if the pin has already been used
             if (std::find(interruptPinsUsed.begin(), interruptPinsUsed.end(), t_pin) != interruptPinsUsed.end())
             {
-                log_e("[INT PIN %u] Pin %d has already been used", getPin());
+                AT_LOG_E("[INT PIN %u] Pin %d has already been used", getPin());
                 ESP_ERROR_CHECK(ESP_FAIL);
             }
             // Check that timeouts for changing states are greater than 0 ticks
             if (!(lowToHighTimeoutTicks && highToLowTimeoutTicks))
             {
-                log_e("[INT PIN %u] Timeout for changing FSM states must be grater than 0 ticks", getPin());
+                AT_LOG_E("[INT PIN %u] Timeout for changing FSM states must be grater than 0 ticks", getPin());
                 ESP_ERROR_CHECK(ESP_ERR_INVALID_ARG);
             }
             // Initialize static variables
@@ -62,7 +61,7 @@ namespace AT
             // Create the queue to send filtered interrupts (outputs)
             s_queueLowpassInterrupts = xQueueCreate(LOWPASS_INTERRUPT_QUEUE_SIZE, sizeof(Interrupt));
             if (!s_queueLowpassInterrupts)
-                log_e("[INT PIN %u] Could not create the queue", getPin());
+                AT_LOG_E("[INT PIN %u] Could not create the queue", getPin());
 
             // Create the timer to change states
             s_timerStateChanger = xTimerCreate(
@@ -72,7 +71,7 @@ namespace AT
                 (void *)0,
                 timerStateChangerCallback);
             if (!s_timerStateChanger)
-                log_e("[INT PIN %u] Could not create timer", getPin());
+                AT_LOG_E("[INT PIN %u] Could not create timer", getPin());
             // Create the no activity timer
             s_timerNoActivity = xTimerCreate(
                 "s_timerNoActivity",
@@ -81,7 +80,7 @@ namespace AT
                 (void *)0,
                 timerNoActivityCallback);
             if (!s_timerNoActivity)
-                log_e("[INT PIN %u] Could not create timer", getPin());
+                AT_LOG_E("[INT PIN %u] Could not create timer", getPin());
             xTimerStart(s_timerNoActivity, portMAX_DELAY);
 
             // Create the counting semaphore if it is not initialized yet
@@ -92,7 +91,7 @@ namespace AT
             {
                 mutexCreateInterrupt = xSemaphoreCreateMutex();
                 if (!mutexCreateInterrupt)
-                    log_e("[INT PIN %u] Could not create mutex", getPin());
+                    AT_LOG_E("[INT PIN %u] Could not create mutex", getPin());
             }
 
             // Initialize the pin
@@ -175,14 +174,14 @@ namespace AT
                     break;
                 }
                 xTimerStartFromISR(s_timerStateChanger, pxHigherPriorityTaskWoken);
-                isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer started",
-                          getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
+                AT_LOG_D("[INT PIN %u] Got %s when state is %s -> Timer started",
+                         getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
             }
             else
             {
                 xTimerStopFromISR(s_timerStateChanger, pxHigherPriorityTaskWoken);
-                isr_log_d("[INT PIN %u] Got %s when state is %s -> Timer stopped",
-                          getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
+                AT_LOG_D("[INT PIN %u] Got %s when state is %s -> Timer stopped",
+                         getPin(), InterruptToStr(rawInterrupt), LogicStateToStr(s_FSMstate));
             }
         }
 
@@ -198,7 +197,7 @@ namespace AT
             if (rawInterrupt != Interrupt::noInterrupt)
                 processInterrupt(rawInterrupt, &xHigherPriorityTaskWoken);
             else
-                isr_log_v("[INT PIN %u] (DEBOUNCER) Discarting same interrupt", getPin());
+                AT_LOG_V("[INT PIN %u] (DEBOUNCER) Discarting same interrupt", getPin());
             // Did this action unblock a higher priority task?
             if (xHigherPriorityTaskWoken)
                 portYIELD_FROM_ISR();
@@ -207,14 +206,14 @@ namespace AT
         static void IRAM_ATTR timerNoActivityCallback(const TimerHandle_t xTimer)
         {
             // Call the ISR
-            isr_log_d("[INT PIN %u] No activity for %d seconds. Calling ISR...",
-                      getPin(), pdTICKS_TO_MS(s_noActivityTimeoutTicks) / 1000);
+            AT_LOG_D("[INT PIN %u] No activity for %d seconds. Calling ISR...",
+                     getPin(), pdTICKS_TO_MS(s_noActivityTimeoutTicks) / 1000);
             isrFunc();
         }
 
         static void IRAM_ATTR timerStateChangerCallback(const TimerHandle_t xTimer)
         {
-            log_i("[INT PIN %u] Got interrupt %s", getPin(), InterruptToStr(s_lastRawInterrupt));
+            AT_LOG_I("[INT PIN %u] Got interrupt %s", getPin(), InterruptToStr(s_lastRawInterrupt));
             // Update the state
             switch (s_lastRawInterrupt)
             {

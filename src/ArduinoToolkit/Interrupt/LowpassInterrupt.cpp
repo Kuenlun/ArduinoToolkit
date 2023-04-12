@@ -1,6 +1,4 @@
-#include <Arduino.h>
-
-#include "LowpassInterrupt.h"
+#include "ArduinoToolkit/Interrupt/LowpassInterrupt.h"
 
 namespace AT
 {
@@ -17,7 +15,6 @@ namespace AT
     // Vector to save the pins used for LowpassInterrupt
     std::vector<uint8_t> interruptPinsUsed;
 
-
     void initializeCountingSemaphore()
     {
         // Create the counting semaphore if it is not initialized yet
@@ -26,7 +23,7 @@ namespace AT
             // Initialize the counting semaphore to 0 with uxMaxCount set to UBaseType_t max value
             semaphoreLowpassInterruptToRead = xSemaphoreCreateCounting(-1, 0);
             if (!semaphoreLowpassInterruptToRead)
-                log_e("Could not create counting semaphore");
+                AT_LOG_E("Could not create counting semaphore");
         }
     }
 

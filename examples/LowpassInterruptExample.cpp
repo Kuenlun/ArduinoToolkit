@@ -1,35 +1,24 @@
-#include <ArduinoToolkit.h>
+#include "ArduinoToolkit/Interrupt/LowpassInterrupt.h"
 
 /* * * * * *
  *  SETUP  *
  * * * * * */
 void setup()
 {
-    //AT::LowpassInterrupt<1> intPir(INPUT_PULLDOWN,
-    //                               pdMS_TO_TICKS(100),
-    //                               pdMS_TO_TICKS(1000),
-    //                               pdMS_TO_TICKS(10000));
-
-    AT::LowpassInterrupt<42> intBed(INPUT_PULLUP,
-                                    pdMS_TO_TICKS(100),
-                                    pdMS_TO_TICKS(1000),
-                                    pdMS_TO_TICKS(10000));
+    AT::LowpassInterrupt<1> intPin(INPUT_PULLUP,
+                                   pdMS_TO_TICKS(100),
+                                   pdMS_TO_TICKS(1000),
+                                   pdMS_TO_TICKS(10000));
 
     while (true)
     {
         // Blocks the task until any lowpass interrupt arrives
         AT::blockUntilLowpassInterrupt();
-        //if (intPir.getLowpassInterruptsWaiting())
-        //{
-        //    const AT::Interrupt interrupt{intPir.receiveLowpassInterrupts()};
-        //    log_i("Pin %u got interrupt %s. Current state is %s",
-        //          intPir.getPin(), AT::InterruptToStr(interrupt), AT::LogicStateToStr(intPir.getState()));
-        //}
-        if (intBed.getLowpassInterruptsWaiting())
+        if (intPin.getLowpassInterruptsWaiting())
         {
-            const AT::Interrupt interrupt{intBed.receiveLowpassInterrupts()};
-            log_i("Pin %u got interrupt %s. Current state is %s",
-                  intBed.getPin(), AT::InterruptToStr(interrupt), AT::LogicStateToStr(intBed.getState()));
+            const AT::Interrupt interrupt{intPin.receiveLowpassInterrupts()};
+            LOG_I("Pin %u got interrupt %s. Current state is %s",
+                  intPin.getPin(), AT::InterruptToStr(interrupt), AT::LogicStateToStr(intPin.getState()));
         }
     }
 }
@@ -39,4 +28,5 @@ void setup()
  * * * * * */
 void loop()
 {
+    // Code here won't run
 }

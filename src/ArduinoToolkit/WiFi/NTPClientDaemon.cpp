@@ -1,108 +1,103 @@
 #include <WiFiUdp.h>
 
-#include "WiFiDaemon.h"
+#include <NTPClient.h>
 
-#include "NTPClientDaemon.h"
+#include "ArduinoToolkit/WiFi/NTPClientDaemon.h"
 
 namespace AT
 {
 
-    // WiFiUdp object
-    static WiFiUDP ntpUDP;
-
-    /**
-     * NTPClientDaemon class static variables
-     */
-    NTPClient NTPClientDaemon::s_timeClient(ntpUDP);
-    uint32_t NTPClientDaemon::s_updateDateTimePeriodTicks;
-    uint32_t NTPClientDaemon::s_retryUpdateDateTimePeriodTicks;
-
-    /**
-     * NTPClientDaemon class protected methods
-     */
-    NTPClientDaemon::NTPClientDaemon(const TickType_t updateDateTimePeriodTicks,
-                                     const TickType_t retryUpdateDateTimePeriodTicks)
-        : m_timerUpdateDateTime(nullptr)
+    namespace NTPClientDaemon
     {
-        // Initialize static variables
-        s_updateDateTimePeriodTicks = updateDateTimePeriodTicks;
-        s_retryUpdateDateTimePeriodTicks = retryUpdateDateTimePeriodTicks;
 
-        log_v("Instanciating NTPClientDaemon object");
+        // Static variables
+        static WiFiUDP ntpUDP;
+        static NTPClient timeClient(ntpUDP);
+        static uint32_t updateDateTimePeriodTicks;
+        static uint32_t retryUpdateDateTimePeriodTicks;
+        static TimerHandle_t timerUpdateDateTime;
 
-        // Initialize a NTPClient to get time
-        s_timeClient.begin();
-        // Set offset time in seconds to adjust for your timezone, for example:
-        // GMT +1 = 3600
-        s_timeClient.setTimeOffset(3600);
-
-        // Create the update datetime timer
-        m_timerUpdateDateTime = xTimerCreate(
-            "timerUpdateDatetime",
-            retryUpdateDateTimePeriodTicks,
-            pdTRUE,
-            (void *)0,
-            timerUpdateDateTimeCB);
-        if (!m_timerUpdateDateTime)
-            log_e("Could not create timer");
-        // Start the timer
-        xTimerStart(m_timerUpdateDateTime, portMAX_DELAY);
-    }
-
-    NTPClientDaemon::~NTPClientDaemon()
-    {
-        xTimerStop(m_timerUpdateDateTime, portMAX_DELAY);
-        s_timeClient.end();
-        log_i("NTPClientDaemon Deleted");
-    }
-
-    /**
-     * NTPClientDaemon class private methods
-     */
-    void NTPClientDaemon::changeTimerPeriodToNormal(const TimerHandle_t &xTimer,
-                                                    BaseType_t *const pxHigherPriorityTaskWoken)
-    {
-        if (xTimerGetPeriod(xTimer) != s_updateDateTimePeriodTicks)
+        // Static functions
+        static void changeTimerPeriodToNormal(const TimerHandle_t &xTimer,
+                                              BaseType_t *const pxHigherPriorityTaskWoken)
         {
-            xTimerChangePeriodFromISR(xTimer, s_updateDateTimePeriodTicks, pxHigherPriorityTaskWoken);
-            isr_log_v("Update DateTime timer period changed to %ums", pdTICKS_TO_MS(s_updateDateTimePeriodTicks));
-        }
-    }
-
-    void NTPClientDaemon::changeTimerPeriodToRetry(const TimerHandle_t &xTimer,
-                                                   BaseType_t *const pxHigherPriorityTaskWoken)
-    {
-        if (xTimerGetPeriod(xTimer) != s_retryUpdateDateTimePeriodTicks)
-        {
-            xTimerChangePeriodFromISR(xTimer, s_retryUpdateDateTimePeriodTicks, pxHigherPriorityTaskWoken);
-            isr_log_v("Update DateTime timer period changed to %ums", pdTICKS_TO_MS(s_retryUpdateDateTimePeriodTicks));
-        }
-    }
-
-    void NTPClientDaemon::timerUpdateDateTimeCB(const TimerHandle_t xTimer)
-    {
-        BaseType_t xHigherPriorityTaskWoken{pdFALSE};
-        if (WiFiDaemon::isConnected())
-        {
-            if (s_timeClient.forceUpdate())
+            if (xTimerGetPeriod(xTimer) != updateDateTimePeriodTicks)
             {
-                isr_log_d("Current time is: %s", s_timeClient.getFormattedTime());
-                changeTimerPeriodToNormal(xTimer, &xHigherPriorityTaskWoken);
+                xTimerChangePeriodFromISR(xTimer, updateDateTimePeriodTicks, pxHigherPriorityTaskWoken);
+                AT_LOG_V("Update DateTime timer period changed to %ums", pdTICKS_TO_MS(updateDateTimePeriodTicks));
+            }
+        }
+
+        static void changeTimerPeriodToRetry(const TimerHandle_t &xTimer,
+                                             BaseType_t *const pxHigherPriorityTaskWoken)
+        {
+            if (xTimerGetPeriod(xTimer) != retryUpdateDateTimePeriodTicks)
+            {
+                xTimerChangePeriodFromISR(xTimer, retryUpdateDateTimePeriodTicks, pxHigherPriorityTaskWoken);
+                AT_LOG_V("Update DateTime timer period changed to %ums", pdTICKS_TO_MS(retryUpdateDateTimePeriodTicks));
+            }
+        }
+
+        static void timerUpdateDateTimeCB(const TimerHandle_t xTimer)
+        {
+            BaseType_t xHigherPriorityTaskWoken{pdFALSE};
+            if (WiFiDaemon::isConnected())
+            {
+                if (timeClient.forceUpdate())
+                {
+                    AT_LOG_D("Current time is: %s", timeClient.getFormattedTime());
+                    changeTimerPeriodToNormal(xTimer, &xHigherPriorityTaskWoken);
+                }
+                else
+                {
+                    AT_LOG_W("Could not update timeClient");
+                    changeTimerPeriodToRetry(xTimer, &xHigherPriorityTaskWoken);
+                }
             }
             else
             {
-                isr_log_w("Could not update timeClient");
+                AT_LOG_W("Could not update timeClient because WiFi is not connected");
                 changeTimerPeriodToRetry(xTimer, &xHigherPriorityTaskWoken);
             }
+            // Did this action unblock a higher priority task?
+            if (xHigherPriorityTaskWoken)
+                portYIELD_FROM_ISR();
         }
-        else
+
+        // Public functions
+        void start(const TickType_t _updateDateTimePeriodTicks,
+                   const TickType_t _retryUpdateDateTimePeriodTicks)
         {
-            isr_log_w("Could not update timeClient because WiFi is not connected");
-            changeTimerPeriodToRetry(xTimer, &xHigherPriorityTaskWoken);
+            // Initialize static variables
+            updateDateTimePeriodTicks = _updateDateTimePeriodTicks;
+            retryUpdateDateTimePeriodTicks = _retryUpdateDateTimePeriodTicks;
+
+            // Initialize a NTPClient to get time
+            timeClient.begin();
+            // Set offset time in seconds to adjust for your timezone, for example:
+            // GMT +1 = 3600
+            timeClient.setTimeOffset(3600);
+
+            // Create the update datetime timer
+            timerUpdateDateTime = xTimerCreate(
+                "timerUpdateDatetime",
+                retryUpdateDateTimePeriodTicks,
+                pdTRUE,
+                (void *)0,
+                timerUpdateDateTimeCB);
+            if (!timerUpdateDateTime)
+                AT_LOG_E("Could not create timer");
+            // Start the timer
+            xTimerStart(timerUpdateDateTime, portMAX_DELAY);
         }
-        // Did this action unblock a higher priority task?
-        if (xHigherPriorityTaskWoken)
-            portYIELD_FROM_ISR();
-    }
+
+        void stop()
+        {
+            xTimerStop(timerUpdateDateTime, portMAX_DELAY);
+            timeClient.end();
+            AT_LOG_I("NTPClientDaemon Deleted");
+        }
+
+    } // namespace NTPClientDaemon
 
 } // namespace AT
