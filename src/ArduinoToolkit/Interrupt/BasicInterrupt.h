@@ -14,12 +14,17 @@ namespace AT
         inline uint8_t getPin() const { return m_pin; }
         inline uint8_t getMode() const { return m_mode; }
         inline bool getState() const { return m_state; }
-        inline bool &getState() { return m_state; }
+
+    private:
+        static void deferredInterrupt(void *const voidPtrInt, uint32_t ulParameter2);
+        static void IRAM_ATTR intISR(void *const voidPtrInt);
 
     private:
         const uint8_t m_pin;
         const uint8_t m_mode;
         bool m_state;
+        SemaphoreHandle_t m_allDoneSemaphore;
+        SemaphoreHandle_t m_countingSemaphore;
     };
 
 } // namespace AT
