@@ -5,22 +5,21 @@
 namespace AT
 {
 
-    enum struct LogicState : uint8_t
+    class BasicInterrupt
     {
-        low = 0,
-        high = 1,
-        undefined
+    public:
+        BasicInterrupt(const uint8_t pin, const uint8_t mode);
+        ~BasicInterrupt();
+
+        inline uint8_t getPin() const { return m_pin; }
+        inline uint8_t getMode() const { return m_mode; }
+        inline bool getState() const { return m_state; }
+        inline bool &getState() { return m_state; }
+
+    private:
+        const uint8_t m_pin;
+        const uint8_t m_mode;
+        bool m_state;
     };
-
-    const char *LogicStateToStr(const LogicState state);
-
-    enum struct Interrupt : uint8_t
-    {
-        noInterrupt = 0b00,
-        falling = 0b01,
-        rising = 0b10
-    };
-
-    const char *InterruptToStr(const Interrupt interrupt);
 
 } // namespace AT
