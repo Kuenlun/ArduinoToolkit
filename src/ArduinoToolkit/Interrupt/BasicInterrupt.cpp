@@ -10,14 +10,17 @@ namespace AT
     {
         const BasicInterrupt *const &intPtr{(BasicInterrupt*)&ulParameter2};
         // Log the current state of the sensor pin
-        if (intPtr->m_state)
+        switch (intPtr->m_state)
+        {
+        case PinState::High:
             AT_LOG_I("Pin %u: Separado", intPtr->m_pin);
-        else
+            break;
+        case PinState::Low:
             AT_LOG_I("Pin %u: Junto", intPtr->m_pin);
-        BaseType_t xHigherPriorityTaskWoken{pdFALSE};
-        // Did this action unblock a higher priority task?
-        if (xHigherPriorityTaskWoken)
-            portYIELD_FROM_ISR();
+            break;
+        default:
+            break;
+        }
     }
 
     // Interrupt service routine (ISR) function
@@ -25,14 +28,15 @@ namespace AT
     {
         BasicInterrupt *const &intPtr{(BasicInterrupt *)voidPtrInt};
         // Read the current state of the sensor pin
-        const bool newPinState{digitalRead(intPtr->m_pin)};
+        const PinState newState = digitalRead(intPtr->m_pin) ? PinState::High : PinState::Low;
         // Check if the sensor state has changed
         BaseType_t xHigherPriorityTaskWoken{pdFALSE};
-        if (newPinState != intPtr->m_state)
+        if (newState != intPtr->m_state)
         {
-            intPtr->m_state = newPinState;
+            intPtr->m_state = newState;
             // Call the deferred interrupt handler function
-            xTimerPendFunctionCallFromISR(deferredInterrupt, nullptr, *(uint32_t*)intPtr, &xHigherPriorityTaskWoken);
+            if (!xTimerPendFunctionCallFromISR(deferredInterrupt, nullptr, *(uint32_t*)intPtr, &xHigherPriorityTaskWoken))
+                AT_LOG_W("xTimerPendFunctionCallFromISR queue full");
         }
         // Did this action unblock a higher priority task?
         if (xHigherPriorityTaskWoken)
