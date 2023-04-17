@@ -23,13 +23,20 @@ namespace AT
         inline PinState getState() const { return m_state; }
 
     private:
-        static void deferredInterrupt(void *const pvParameter1, uint32_t ulParameter2);
+        static void deferredInterruptTask(void *const parameters);
         static void IRAM_ATTR intISR(void *const voidPtrInt);
 
     private:
         const uint8_t m_pin;
         const uint8_t m_mode;
         PinState m_state{PinState::Unknown};
+
+    private:
+        static UBaseType_t s_taskPriority;
+        static TaskHandle_t s_deferredInterruptTaskHandle;
+        static size_t s_numInterruptsUsed;
+        static QueueHandle_t s_interruptQueue;
+        static constexpr UBaseType_t s_INTERRUPT_QUEUE_LENGTH{100};
     };
 
 } // namespace AT

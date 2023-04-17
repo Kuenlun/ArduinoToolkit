@@ -3,23 +3,33 @@
 namespace AT
 {
 
-    static_assert(sizeof(BasicInterrupt) <= sizeof(uint32_t));
+    // Static class members
+    UBaseType_t BasicInterrupt::s_taskPriority{2};
+    TaskHandle_t BasicInterrupt::s_deferredInterruptTaskHandle{nullptr};
+    size_t BasicInterrupt::s_numInterruptsUsed{0};
+    QueueHandle_t BasicInterrupt::s_interruptQueue{nullptr};
 
     // Deferred interrupt handler function
-    void BasicInterrupt::deferredInterrupt(void *const pvParameter1, uint32_t ulParameter2)
+    void BasicInterrupt::deferredInterruptTask(void *const parameters)
     {
-        const BasicInterrupt *const &intPtr{(BasicInterrupt*)&ulParameter2};
-        // Log the current state of the sensor pin
-        switch (intPtr->m_state)
+        uint8_t rawBuffer[sizeof(BasicInterrupt)];
+        BasicInterrupt *const &intPtr{(BasicInterrupt *)rawBuffer};
+
+        while (true)
         {
-        case PinState::High:
-            AT_LOG_I("Pin %u: Separado", intPtr->m_pin);
-            break;
-        case PinState::Low:
-            AT_LOG_I("Pin %u: Junto", intPtr->m_pin);
-            break;
-        default:
-            break;
+            xQueueReceive(s_interruptQueue, intPtr, portMAX_DELAY);
+            // Log the current state of the sensor pin
+            switch (intPtr->m_state)
+            {
+            case PinState::High:
+                AT_LOG_D("Pin %u: Separado", intPtr->m_pin);
+                break;
+            case PinState::Low:
+                AT_LOG_D("Pin %u: Junto", intPtr->m_pin);
+                break;
+            default:
+                break;
+            }
         }
     }
 
@@ -34,9 +44,8 @@ namespace AT
         if (newState != intPtr->m_state)
         {
             intPtr->m_state = newState;
-            // Call the deferred interrupt handler function
-            if (!xTimerPendFunctionCallFromISR(deferredInterrupt, nullptr, *(uint32_t*)intPtr, &xHigherPriorityTaskWoken))
-                AT_LOG_W("xTimerPendFunctionCallFromISR queue full");
+            // Send the interrupt to the deferred interrupt task
+            xQueueSendToBackFromISR(s_interruptQueue, intPtr, &xHigherPriorityTaskWoken);
         }
         // Did this action unblock a higher priority task?
         if (xHigherPriorityTaskWoken)
@@ -46,16 +55,48 @@ namespace AT
     BasicInterrupt::BasicInterrupt(const uint8_t pin, const uint8_t mode)
         : m_pin(pin), m_mode(mode)
     {
+        // Check if the "deferredInterruptTask" needs to be created
+        if (!s_numInterruptsUsed)
+        {
+            // Create the queue to send the interrupts (common to all interrupt pins)
+            s_interruptQueue = xQueueCreate(s_INTERRUPT_QUEUE_LENGTH, sizeof(BasicInterrupt));
+            ASSERT(s_interruptQueue);
+            // Set up the deferredInterruptTask
+            const BaseType_t ret{xTaskCreatePinnedToCore(deferredInterruptTask,
+                                                         "deferredInterruptTask",
+                                                         3 * 1024,
+                                                         nullptr,
+                                                         s_taskPriority,
+                                                         &s_deferredInterruptTaskHandle,
+                                                         ARDUINO_RUNNING_CORE)};
+            ASSERT(ret);
+            AT_LOG_V("BasicInterrupt deferred interrupt task created");
+        }
+        // Log some info from the task
+        PRINT_TASK_INFO(s_deferredInterruptTaskHandle);
         // Set up the pin mode and attach the interrupt
         pinMode(m_pin, m_mode);
         attachInterruptArg(m_pin, intISR, (void *)this, CHANGE);
+        // Increase the interrupts used counter
+        s_numInterruptsUsed++;
         AT_LOG_I("BasicInterrupt attached on pin %u", m_pin);
     }
 
     BasicInterrupt::~BasicInterrupt()
     {
+        // Dettach the interrupt from the pin
         detachInterrupt(m_pin);
-        AT_LOG_I("BasicInterrupt detached on pin %u", m_pin);
+        // Decrease the interrupts used counter
+        s_numInterruptsUsed--;
+        // Delete the "deferredInterruptTask" if the counter is 0
+        if (!s_numInterruptsUsed)
+        {
+            vTaskDelete(s_deferredInterruptTaskHandle);
+            AT_LOG_V("BasicInterrupt deferred interrupt task deleted");
+            vQueueDelete(s_interruptQueue);
+            AT_LOG_V("BasicInterrupt interrupt queue deleted");
+        }
+        AT_LOG_I("BasicInterrupt detached from pin %u", m_pin);
     }
 
 } // namespace AT
