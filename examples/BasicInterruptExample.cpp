@@ -8,7 +8,7 @@
  * * * * * */
 void setup()
 {
-    static AT::BasicInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP);
+    static AT::BasicInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, true);
     static AT::BasicInterrupt pirInt(PIN_INT_PIR, INPUT_PULLDOWN);
     vTaskDelete(NULL);
 }

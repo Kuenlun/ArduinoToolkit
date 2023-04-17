@@ -17,7 +17,16 @@ namespace AT
 
         while (true)
         {
+            // Wait for an interrupt to happen
             xQueueReceive(s_interruptQueue, intPtr, portMAX_DELAY);
+            // Invert the logic if needed
+            if (intPtr->m_reverseLogic)
+            {
+                if (intPtr->m_state == PinState::Low)
+                    intPtr->m_state = PinState::High;
+                else if (intPtr->m_state == PinState::High)
+                    intPtr->m_state = PinState::Low;
+            }
             // Log the current state of the sensor pin
             switch (intPtr->m_state)
             {
@@ -38,7 +47,7 @@ namespace AT
     {
         BasicInterrupt *const &intPtr{(BasicInterrupt *)voidPtrInt};
         // Read the current state of the sensor pin
-        const PinState newState = digitalRead(intPtr->m_pin) ? PinState::High : PinState::Low;
+        const PinState newState{digitalRead(intPtr->m_pin) ? PinState::High : PinState::Low};
         // Check if the sensor state has changed
         BaseType_t xHigherPriorityTaskWoken{pdFALSE};
         if (newState != intPtr->m_state)
@@ -52,8 +61,10 @@ namespace AT
             portYIELD_FROM_ISR();
     }
 
-    BasicInterrupt::BasicInterrupt(const uint8_t pin, const uint8_t mode)
-        : m_pin(pin), m_mode(mode)
+    BasicInterrupt::BasicInterrupt(const uint8_t pin,
+                                   const uint8_t mode,
+                                   const bool reverseLogic)
+        : m_pin(pin), m_mode(mode), m_reverseLogic(reverseLogic)
     {
         // Check if the "deferredInterruptTask" needs to be created
         if (!s_numInterruptsUsed)
@@ -97,6 +108,10 @@ namespace AT
             AT_LOG_V("BasicInterrupt interrupt queue deleted");
         }
         AT_LOG_I("BasicInterrupt detached from pin %u", m_pin);
+    }
+
+    PinState BasicInterrupt::receiveInterrupt(const TickType_t xTicksToWait) const
+    {
     }
 
 } // namespace AT

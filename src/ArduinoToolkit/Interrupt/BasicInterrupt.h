@@ -15,12 +15,16 @@ namespace AT
     class BasicInterrupt
     {
     public:
-        BasicInterrupt(const uint8_t pin, const uint8_t mode);
+        BasicInterrupt(const uint8_t pin,
+                       const uint8_t mode,
+                       const bool reverseLogic = false);
         ~BasicInterrupt();
 
         inline uint8_t getPin() const { return m_pin; }
         inline uint8_t getMode() const { return m_mode; }
         inline PinState getState() const { return m_state; }
+
+        PinState receiveInterrupt(const TickType_t xTicksToWait = portMAX_DELAY) const;
 
     private:
         static void deferredInterruptTask(void *const parameters);
@@ -29,6 +33,7 @@ namespace AT
     private:
         const uint8_t m_pin;
         const uint8_t m_mode;
+        const bool m_reverseLogic;
         PinState m_state{PinState::Unknown};
 
     private:
