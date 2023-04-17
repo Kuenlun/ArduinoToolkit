@@ -3,21 +3,18 @@
 namespace AT
 {
 
+    static_assert(sizeof(BasicInterrupt) <= sizeof(uint32_t));
+
     // Deferred interrupt handler function
-    void BasicInterrupt::deferredInterrupt(void *const voidPtrInt, uint32_t ulParameter2)
+    void BasicInterrupt::deferredInterrupt(void *const pvParameter1, uint32_t ulParameter2)
     {
-        const BasicInterrupt *const &intPtr{(BasicInterrupt *)voidPtrInt};
+        const BasicInterrupt *const &intPtr{(BasicInterrupt*)&ulParameter2};
         // Log the current state of the sensor pin
         if (intPtr->m_state)
             AT_LOG_I("Pin %u: Separado", intPtr->m_pin);
         else
             AT_LOG_I("Pin %u: Junto", intPtr->m_pin);
         BaseType_t xHigherPriorityTaskWoken{pdFALSE};
-        // Decrease the counting semaphore
-        xSemaphoreTakeFromISR(intPtr->m_countingSemaphore, &xHigherPriorityTaskWoken);
-        // Check if the semaphore count is zero and give the all done semaphore if it is
-        if (uxSemaphoreGetCount(intPtr->m_countingSemaphore) == 0)
-            xSemaphoreGiveFromISR(intPtr->m_allDoneSemaphore, &xHigherPriorityTaskWoken);
         // Did this action unblock a higher priority task?
         if (xHigherPriorityTaskWoken)
             portYIELD_FROM_ISR();
@@ -35,11 +32,7 @@ namespace AT
         {
             intPtr->m_state = newPinState;
             // Call the deferred interrupt handler function
-            if (xTimerPendFunctionCallFromISR(deferredInterrupt, voidPtrInt, 0, &xHigherPriorityTaskWoken))
-            {
-                xSemaphoreTakeFromISR(intPtr->m_allDoneSemaphore, &xHigherPriorityTaskWoken);
-                xSemaphoreGiveFromISR(intPtr->m_countingSemaphore, &xHigherPriorityTaskWoken);
-            }
+            xTimerPendFunctionCallFromISR(deferredInterrupt, nullptr, *(uint32_t*)intPtr, &xHigherPriorityTaskWoken);
         }
         // Did this action unblock a higher priority task?
         if (xHigherPriorityTaskWoken)
@@ -49,11 +42,6 @@ namespace AT
     BasicInterrupt::BasicInterrupt(const uint8_t pin, const uint8_t mode)
         : m_pin(pin), m_mode(mode)
     {
-        // Create semaphores to protect the destruction
-        m_allDoneSemaphore = xSemaphoreCreateBinary();
-        ASSERT(m_allDoneSemaphore);
-        m_countingSemaphore = xSemaphoreCreateCounting(-1, 0);
-        ASSERT(m_countingSemaphore);
         // Set up the pin mode and attach the interrupt
         pinMode(m_pin, m_mode);
         attachInterruptArg(m_pin, intISR, (void *)this, CHANGE);
@@ -63,9 +51,6 @@ namespace AT
     BasicInterrupt::~BasicInterrupt()
     {
         detachInterrupt(m_pin);
-        // Make sure that "deferredInterrupt" has finished processing
-        // all interrupts before deleting a "BasicInterrupt" object.
-        xSemaphoreTake(m_allDoneSemaphore, portMAX_DELAY);
         AT_LOG_I("BasicInterrupt detached on pin %u", m_pin);
     }
 
