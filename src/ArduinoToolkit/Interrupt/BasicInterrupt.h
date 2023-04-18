@@ -17,7 +17,9 @@ namespace AT
     public:
         BasicInterrupt(const uint8_t pin,
                        const uint8_t mode,
-                       const bool reverseLogic = false);
+                       const bool reverseLogic = false,
+                       const UBaseType_t uxQueueLength = s_DEFAULT_QUEUE_LENGTH,
+                       const uint32_t periodicCallToISRms = s_DEFAULT_PERIODIC_CALL_ISR_MS);
         ~BasicInterrupt();
 
         inline uint8_t getPin() const { return m_pin; }
@@ -27,21 +29,20 @@ namespace AT
         PinState receiveInterrupt(const TickType_t xTicksToWait = portMAX_DELAY) const;
 
     private:
-        static void deferredInterruptTask(void *const parameters);
         static void IRAM_ATTR intISR(void *const voidPtrInt);
+        static void timerNoActivityCallback(const TimerHandle_t xTimer);
 
     private:
         const uint8_t m_pin;
         const uint8_t m_mode;
         const bool m_reverseLogic;
         PinState m_state{PinState::Unknown};
+        QueueHandle_t m_interruptQueue{nullptr};
+        TimerHandle_t m_periodicCallToISRtimer{nullptr};
 
     private:
-        static UBaseType_t s_taskPriority;
-        static TaskHandle_t s_deferredInterruptTaskHandle;
-        static size_t s_numInterruptsUsed;
-        static QueueHandle_t s_interruptQueue;
-        static constexpr UBaseType_t s_INTERRUPT_QUEUE_LENGTH{100};
+        static constexpr UBaseType_t s_DEFAULT_QUEUE_LENGTH{10};
+        static constexpr uint32_t s_DEFAULT_PERIODIC_CALL_ISR_MS{100};
     };
 
 } // namespace AT

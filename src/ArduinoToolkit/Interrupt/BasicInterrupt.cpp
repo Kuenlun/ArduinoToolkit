@@ -3,69 +3,94 @@
 namespace AT
 {
 
-    // Static class members
-    UBaseType_t BasicInterrupt::s_taskPriority{2};
-    TaskHandle_t BasicInterrupt::s_deferredInterruptTaskHandle{nullptr};
-    size_t BasicInterrupt::s_numInterruptsUsed{0};
-    QueueHandle_t BasicInterrupt::s_interruptQueue{nullptr};
-
-    // Deferred interrupt handler function
-    void BasicInterrupt::deferredInterruptTask(void *const parameters)
-    {
-        uint8_t rawBuffer[sizeof(BasicInterrupt)];
-        BasicInterrupt *const &intPtr{(BasicInterrupt *)rawBuffer};
-
-        while (true)
-        {
-            // Wait for an interrupt to happen
-            xQueueReceive(s_interruptQueue, intPtr, portMAX_DELAY);
-            // Invert the logic if needed
-            if (intPtr->m_reverseLogic)
-            {
-                if (intPtr->m_state == PinState::Low)
-                    intPtr->m_state = PinState::High;
-                else if (intPtr->m_state == PinState::High)
-                    intPtr->m_state = PinState::Low;
-            }
-            // Log the current state of the sensor pin
-            switch (intPtr->m_state)
-            {
-            case PinState::High:
-                AT_LOG_D("Pin %u: Separado", intPtr->m_pin);
-                break;
-            case PinState::Low:
-                AT_LOG_D("Pin %u: Junto", intPtr->m_pin);
-                break;
-            default:
-                break;
-            }
-        }
-    }
-
     // Interrupt service routine (ISR) function
     void IRAM_ATTR BasicInterrupt::intISR(void *const voidPtrInt)
     {
-        BasicInterrupt *const &intPtr{(BasicInterrupt *)voidPtrInt};
+        BasicInterrupt *const &intPtr{static_cast<BasicInterrupt *>(voidPtrInt)};
         // Read the current state of the sensor pin
-        const PinState newState{digitalRead(intPtr->m_pin) ? PinState::High : PinState::Low};
+        const bool rawPinValue{digitalRead(intPtr->m_pin)};
+        // Invert the logic if needed (Logic XOR between rawPinValue and intPtr->m_reverseLogic)
+        const PinState newState{static_cast<PinState>(rawPinValue != intPtr->m_reverseLogic)};
         // Check if the sensor state has changed
         BaseType_t xHigherPriorityTaskWoken{pdFALSE};
         if (newState != intPtr->m_state)
         {
+            // Update the current state of the pin
             intPtr->m_state = newState;
-            // Send the interrupt to the deferred interrupt task
-            xQueueSendToBackFromISR(s_interruptQueue, intPtr, &xHigherPriorityTaskWoken);
+            // Send the interrupt to the interrupt queue
+            if (!xQueueSendToBackFromISR(intPtr->m_interruptQueue, &newState, &xHigherPriorityTaskWoken))
+                AT_LOG_W("Interrupt queue full on pin %u", intPtr->m_pin);
         }
         // Did this action unblock a higher priority task?
         if (xHigherPriorityTaskWoken)
             portYIELD_FROM_ISR();
     }
 
+    void BasicInterrupt::timerNoActivityCallback(const TimerHandle_t xTimer)
+    {
+        intISR(pvTimerGetTimerID(xTimer));
+    }
+
     BasicInterrupt::BasicInterrupt(const uint8_t pin,
                                    const uint8_t mode,
-                                   const bool reverseLogic)
-        : m_pin(pin), m_mode(mode), m_reverseLogic(reverseLogic)
+                                   const bool reverseLogic,
+                                   const UBaseType_t uxQueueLength,
+                                   const uint32_t periodicCallToISRms)
+        : m_pin(pin),
+          m_mode(mode),
+          m_reverseLogic(reverseLogic)
     {
+        // Create a queue to send the interrupts for this pin
+        m_interruptQueue = xQueueCreate(uxQueueLength, sizeof(PinState));
+        ASSERT(m_interruptQueue);
+        // Set up the pin mode and attach the interrupt
+        pinMode(m_pin, m_mode);
+        attachInterruptArg(m_pin, intISR, static_cast<void *>(this), CHANGE);
+        // Create a timer to call the ISR (to catch missing interrupts)
+        m_periodicCallToISRtimer = xTimerCreate("PeriodicCallToISR",
+                                                pdMS_TO_TICKS(periodicCallToISRms),
+                                                pdTRUE,
+                                                static_cast<void *>(this),
+                                                timerNoActivityCallback);
+        ASSERT(m_periodicCallToISRtimer);
+        xTimerStart(m_periodicCallToISRtimer, portMAX_DELAY);
+        AT_LOG_I("BasicInterrupt enabled on pin %u", m_pin);
+    }
+
+    BasicInterrupt::~BasicInterrupt()
+    {
+        // Dettach the interrupt from the pin
+        detachInterrupt(m_pin);
+        // Delete the "deferredInterruptTask" if the counter is 0
+        vQueueDelete(m_interruptQueue);
+        AT_LOG_I("BasicInterrupt disabled on pin %u", m_pin);
+    }
+
+    PinState BasicInterrupt::receiveInterrupt(const TickType_t xTicksToWait) const
+    {
+        PinState pinStateBuffer{PinState::Unknown};
+        // Block until an interrupt arrives from the ISR
+        xQueueReceive(m_interruptQueue, &pinStateBuffer, xTicksToWait);
+        return pinStateBuffer;
+    }
+
+    /* HEADER
+    private:
+        static void deferredInterruptTask(void *const parameters);
+
+    private:
+        static UBaseType_t s_taskPriority;
+        static TaskHandle_t s_deferredInterruptTaskHandle;
+        static size_t s_numInterruptsUsed;
+        static constexpr UBaseType_t s_INTERRUPT_QUEUE_LENGTH{100};
+    */
+    /* STATIC CLASS MEMBERS
+    // Static class members
+    UBaseType_t BasicInterrupt::s_taskPriority{2};
+    TaskHandle_t BasicInterrupt::s_deferredInterruptTaskHandle{nullptr};
+    size_t BasicInterrupt::s_numInterruptsUsed{0};
+    */
+    /* CONSTRUCTOR
         // Check if the "deferredInterruptTask" needs to be created
         if (!s_numInterruptsUsed)
         {
@@ -85,33 +110,43 @@ namespace AT
         }
         // Log some info from the task
         PRINT_TASK_INFO(s_deferredInterruptTaskHandle);
-        // Set up the pin mode and attach the interrupt
-        pinMode(m_pin, m_mode);
-        attachInterruptArg(m_pin, intISR, (void *)this, CHANGE);
         // Increase the interrupts used counter
         s_numInterruptsUsed++;
-        AT_LOG_I("BasicInterrupt attached on pin %u", m_pin);
-    }
-
-    BasicInterrupt::~BasicInterrupt()
+    */
+    /* DESTRUCTOR
+         // Decrease the interrupts used counter
+         s_numInterruptsUsed--;
+         if (!s_numInterruptsUsed)
+         {
+             vTaskDelete(s_deferredInterruptTaskHandle);
+             AT_LOG_V("BasicInterrupt deferred interrupt task deleted");
+         }
+    */
+    /* TASK
+    // Deferred interrupt handler function
+    void BasicInterrupt::deferredInterruptTask(void *const parameters)
     {
-        // Dettach the interrupt from the pin
-        detachInterrupt(m_pin);
-        // Decrease the interrupts used counter
-        s_numInterruptsUsed--;
-        // Delete the "deferredInterruptTask" if the counter is 0
-        if (!s_numInterruptsUsed)
+        uint8_t rawBuffer[sizeof(BasicInterrupt)];
+        BasicInterrupt *const &intPtr{(BasicInterrupt *)rawBuffer};
+
+        while (true)
         {
-            vTaskDelete(s_deferredInterruptTaskHandle);
-            AT_LOG_V("BasicInterrupt deferred interrupt task deleted");
-            vQueueDelete(s_interruptQueue);
-            AT_LOG_V("BasicInterrupt interrupt queue deleted");
+            // Wait for an interrupt to happen
+            xQueueReceive(s_interruptQueue, intPtr, portMAX_DELAY);
+            // Log the current state of the sensor pin
+            switch (intPtr->m_state)
+            {
+            case PinState::High:
+                AT_LOG_D("Pin %u: Separado", intPtr->m_pin);
+                break;
+            case PinState::Low:
+                AT_LOG_D("Pin %u: Junto", intPtr->m_pin);
+                break;
+            default:
+                break;
+            }
         }
-        AT_LOG_I("BasicInterrupt detached from pin %u", m_pin);
     }
-
-    PinState BasicInterrupt::receiveInterrupt(const TickType_t xTicksToWait) const
-    {
-    }
+    */
 
 } // namespace AT

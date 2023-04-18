@@ -10,7 +10,22 @@ void setup()
 {
     static AT::BasicInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, true);
     static AT::BasicInterrupt pirInt(PIN_INT_PIR, INPUT_PULLDOWN);
-    vTaskDelete(NULL);
+    while (true)
+    {
+        AT::PinState state{doorInt.receiveInterrupt()};
+        // Log the current state of the sensor pin
+        switch (state)
+        {
+        case AT::PinState::High:
+            AT_LOG_D("Pin %u: HIGH", doorInt.getPin());
+            break;
+        case AT::PinState::Low:
+            AT_LOG_D("Pin %u: LOW", doorInt.getPin());
+            break;
+        default:
+            break;
+        }
+    }
 }
 
 /* * * * * *
@@ -18,6 +33,5 @@ void setup()
  * * * * * */
 void loop()
 {
-    // Setup and loop task has been deleted
     // Code written here won't run
 }
