@@ -18,7 +18,6 @@ namespace AT
         BasicInterrupt(const uint8_t pin,
                        const uint8_t mode,
                        const bool reverseLogic = false,
-                       const UBaseType_t uxQueueLength = s_DEFAULT_QUEUE_LENGTH,
                        const uint32_t periodicCallToISRms = s_DEFAULT_PERIODIC_CALL_ISR_MS);
         ~BasicInterrupt();
 
@@ -37,11 +36,10 @@ namespace AT
         const uint8_t m_mode;
         const bool m_reverseLogic;
         PinState m_state{PinState::Unknown};
-        QueueHandle_t m_interruptQueue{nullptr};
+        SemaphoreHandle_t m_interruptCountingSepmaphore{nullptr};
         TimerHandle_t m_periodicCallToISRtimer{nullptr};
 
     private:
-        static constexpr UBaseType_t s_DEFAULT_QUEUE_LENGTH{10};
         static constexpr uint32_t s_DEFAULT_PERIODIC_CALL_ISR_MS{100};
     };
 

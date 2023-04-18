@@ -3,6 +3,9 @@
 namespace AT
 {
 
+    // Globals
+    static portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
+
     // Interrupt service routine (ISR) function
     void IRAM_ATTR BasicInterrupt::intISR(void *const voidPtrInt)
     {
@@ -18,8 +21,7 @@ namespace AT
             // Update the current state of the pin
             intPtr->m_state = newState;
             // Send the interrupt to the interrupt queue
-            if (!xQueueSendToBackFromISR(intPtr->m_interruptQueue, &newState, &xHigherPriorityTaskWoken))
-                AT_LOG_W("Interrupt queue full on pin %u", intPtr->m_pin);
+            xSemaphoreGiveFromISR(intPtr->m_interruptCountingSepmaphore, &xHigherPriorityTaskWoken);
         }
         // Did this action unblock a higher priority task?
         if (xHigherPriorityTaskWoken)
@@ -34,15 +36,14 @@ namespace AT
     BasicInterrupt::BasicInterrupt(const uint8_t pin,
                                    const uint8_t mode,
                                    const bool reverseLogic,
-                                   const UBaseType_t uxQueueLength,
                                    const uint32_t periodicCallToISRms)
         : m_pin(pin),
           m_mode(mode),
           m_reverseLogic(reverseLogic)
     {
-        // Create a queue to send the interrupts for this pin
-        m_interruptQueue = xQueueCreate(uxQueueLength, sizeof(PinState));
-        ASSERT(m_interruptQueue);
+        // Create a semaphore to count the number of interrupts that happens
+        m_interruptCountingSepmaphore = xSemaphoreCreateCounting(-1, 0);
+        ASSERT(m_interruptCountingSepmaphore);
         // Set up the pin mode and attach the interrupt
         pinMode(m_pin, m_mode);
         attachInterruptArg(m_pin, intISR, static_cast<void *>(this), CHANGE);
@@ -61,17 +62,27 @@ namespace AT
     {
         // Dettach the interrupt from the pin
         detachInterrupt(m_pin);
-        // Delete the "deferredInterruptTask" if the counter is 0
-        vQueueDelete(m_interruptQueue);
+        // Delete the interrupt counting semaphore
+        vSemaphoreDelete(m_interruptCountingSepmaphore);
         AT_LOG_I("BasicInterrupt disabled on pin %u", m_pin);
     }
 
     PinState BasicInterrupt::receiveInterrupt(const TickType_t xTicksToWait) const
     {
-        PinState pinStateBuffer{PinState::Unknown};
         // Block until an interrupt arrives from the ISR
-        xQueueReceive(m_interruptQueue, &pinStateBuffer, xTicksToWait);
-        return pinStateBuffer;
+        if (xSemaphoreTake(m_interruptCountingSepmaphore, xTicksToWait))
+        {
+            // Disable interrupts so m_state or the semaphore count is not updated if an interrupt happens here
+            portENTER_CRITICAL(&spinlock);
+            const UBaseType_t interruptsLeft{uxSemaphoreGetCount(m_interruptCountingSepmaphore)};
+            const bool interruptState{static_cast<bool>(m_state)};
+            portEXIT_CRITICAL(&spinlock);
+            if (!(interruptsLeft % 2) != interruptState)
+                return PinState::Low;
+            else
+                return PinState::High;
+        }
+        return PinState::Unknown;
     }
 
     /* HEADER
