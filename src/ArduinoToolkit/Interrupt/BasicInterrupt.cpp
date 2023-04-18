@@ -22,6 +22,8 @@ namespace AT
             intPtr->m_state = newState;
             // Send the interrupt to the interrupt queue
             xSemaphoreGiveFromISR(intPtr->m_interruptCountingSepmaphore, &xHigherPriorityTaskWoken);
+            // Restart PeriodicCallToISR timer (also start it the first time)
+            xTimerResetFromISR(intPtr->m_periodicCallToISRtimer, &xHigherPriorityTaskWoken);
         }
         // Did this action unblock a higher priority task?
         if (xHigherPriorityTaskWoken)
@@ -54,7 +56,6 @@ namespace AT
                                                 static_cast<void *>(this),
                                                 timerNoActivityCallback);
         ASSERT(m_periodicCallToISRtimer);
-        xTimerStart(m_periodicCallToISRtimer, portMAX_DELAY);
         AT_LOG_I("BasicInterrupt enabled on pin %u", m_pin);
     }
 
@@ -62,9 +63,11 @@ namespace AT
     {
         // Dettach the interrupt from the pin
         detachInterrupt(m_pin);
+        // Delete the timer
+        xTimerDelete(m_periodicCallToISRtimer, portMAX_DELAY);
         // Delete the interrupt counting semaphore
         vSemaphoreDelete(m_interruptCountingSepmaphore);
-        AT_LOG_I("BasicInterrupt disabled on pin %u", m_pin);
+        AT_LOG_D("BasicInterrupt disabled on pin %u", m_pin);
     }
 
     PinState BasicInterrupt::receiveInterrupt(const TickType_t xTicksToWait) const
@@ -84,80 +87,5 @@ namespace AT
         }
         return PinState::Unknown;
     }
-
-    /* HEADER
-    private:
-        static void deferredInterruptTask(void *const parameters);
-
-    private:
-        static UBaseType_t s_taskPriority;
-        static TaskHandle_t s_deferredInterruptTaskHandle;
-        static size_t s_numInterruptsUsed;
-        static constexpr UBaseType_t s_INTERRUPT_QUEUE_LENGTH{100};
-    */
-    /* STATIC CLASS MEMBERS
-    // Static class members
-    UBaseType_t BasicInterrupt::s_taskPriority{2};
-    TaskHandle_t BasicInterrupt::s_deferredInterruptTaskHandle{nullptr};
-    size_t BasicInterrupt::s_numInterruptsUsed{0};
-    */
-    /* CONSTRUCTOR
-        // Check if the "deferredInterruptTask" needs to be created
-        if (!s_numInterruptsUsed)
-        {
-            // Create the queue to send the interrupts (common to all interrupt pins)
-            s_interruptQueue = xQueueCreate(s_INTERRUPT_QUEUE_LENGTH, sizeof(BasicInterrupt));
-            ASSERT(s_interruptQueue);
-            // Set up the deferredInterruptTask
-            const BaseType_t ret{xTaskCreatePinnedToCore(deferredInterruptTask,
-                                                         "deferredInterruptTask",
-                                                         3 * 1024,
-                                                         nullptr,
-                                                         s_taskPriority,
-                                                         &s_deferredInterruptTaskHandle,
-                                                         ARDUINO_RUNNING_CORE)};
-            ASSERT(ret);
-            AT_LOG_V("BasicInterrupt deferred interrupt task created");
-        }
-        // Log some info from the task
-        PRINT_TASK_INFO(s_deferredInterruptTaskHandle);
-        // Increase the interrupts used counter
-        s_numInterruptsUsed++;
-    */
-    /* DESTRUCTOR
-         // Decrease the interrupts used counter
-         s_numInterruptsUsed--;
-         if (!s_numInterruptsUsed)
-         {
-             vTaskDelete(s_deferredInterruptTaskHandle);
-             AT_LOG_V("BasicInterrupt deferred interrupt task deleted");
-         }
-    */
-    /* TASK
-    // Deferred interrupt handler function
-    void BasicInterrupt::deferredInterruptTask(void *const parameters)
-    {
-        uint8_t rawBuffer[sizeof(BasicInterrupt)];
-        BasicInterrupt *const &intPtr{(BasicInterrupt *)rawBuffer};
-
-        while (true)
-        {
-            // Wait for an interrupt to happen
-            xQueueReceive(s_interruptQueue, intPtr, portMAX_DELAY);
-            // Log the current state of the sensor pin
-            switch (intPtr->m_state)
-            {
-            case PinState::High:
-                AT_LOG_D("Pin %u: Separado", intPtr->m_pin);
-                break;
-            case PinState::Low:
-                AT_LOG_D("Pin %u: Junto", intPtr->m_pin);
-                break;
-            default:
-                break;
-            }
-        }
-    }
-    */
 
 } // namespace AT

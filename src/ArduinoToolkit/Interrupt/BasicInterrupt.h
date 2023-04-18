@@ -27,6 +27,9 @@ namespace AT
 
         PinState receiveInterrupt(const TickType_t xTicksToWait = portMAX_DELAY) const;
 
+    protected:
+        static constexpr uint32_t s_DEFAULT_PERIODIC_CALL_ISR_MS{100};
+
     private:
         static void IRAM_ATTR intISR(void *const voidPtrInt);
         static void timerNoActivityCallback(const TimerHandle_t xTimer);
@@ -38,9 +41,6 @@ namespace AT
         PinState m_state{PinState::Unknown};
         SemaphoreHandle_t m_interruptCountingSepmaphore{nullptr};
         TimerHandle_t m_periodicCallToISRtimer{nullptr};
-
-    private:
-        static constexpr uint32_t s_DEFAULT_PERIODIC_CALL_ISR_MS{100};
     };
 
 } // namespace AT

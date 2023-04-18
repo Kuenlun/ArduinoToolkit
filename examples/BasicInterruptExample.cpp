@@ -1,15 +1,16 @@
 #include <ArduinoToolkit/Interrupt/BasicInterrupt.h>
+#include <ArduinoToolkit/Interrupt/FilteredInterrupt.h>
 
-#define PIN_INT_DOOR 25
-#define PIN_INT_PIR 26
+static constexpr uint8_t PIN_INT_DOOR{25};
+static constexpr uint8_t PIN_INT_PIR{26};
 
 /* * * * * *
  *  SETUP  *
  * * * * * */
 void setup()
 {
-    static AT::BasicInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, true);
-    static AT::BasicInterrupt pirInt(PIN_INT_PIR, INPUT_PULLDOWN);
+    // static AT::BasicInterrupt pirInt(PIN_INT_PIR, INPUT_PULLDOWN);
+    static AT::FilteredInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, true, 100, 200);
     while (true)
     {
         AT::PinState state{doorInt.receiveInterrupt()};
