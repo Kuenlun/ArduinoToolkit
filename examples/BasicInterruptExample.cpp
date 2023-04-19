@@ -10,10 +10,11 @@ static constexpr uint8_t PIN_INT_PIR{26};
 void setup()
 {
     // static AT::BasicInterrupt pirInt(PIN_INT_PIR, INPUT_PULLDOWN);
-    static AT::FilteredInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, true, 100, 200);
+    static AT::BasicInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, true);
     while (true)
     {
         AT::PinState state{doorInt.receiveInterrupt()};
+        //AT::PinState state{doorInt.receiveLastInterrupt()};
         // Log the current state of the sensor pin
         switch (state)
         {

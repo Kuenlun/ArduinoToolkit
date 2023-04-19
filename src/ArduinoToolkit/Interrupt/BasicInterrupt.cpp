@@ -70,20 +70,53 @@ namespace AT
         AT_LOG_D("BasicInterrupt disabled on pin %u", m_pin);
     }
 
+    /**
+     * @brief Receive an interrupt from the ISR using a semaphore.
+     * This function blocks until an interrupt is received or the specified timeout elapses.
+     * It then determines the state of the past interrupts by examining the semaphore counter
+     * and the current interrupt state.
+     *
+     * @param xTicksToWait The maximum time to wait for an interrupt.
+     * @return PinState::Low if the interrupt state is low, PinState::High if the interrupt state is high,
+     *         or PinState::Unknown if no interrupt was received within the specified timeout.
+     */
     PinState BasicInterrupt::receiveInterrupt(const TickType_t xTicksToWait) const
     {
         // Block until an interrupt arrives from the ISR
         if (xSemaphoreTake(m_interruptCountingSepmaphore, xTicksToWait))
         {
-            // Disable interrupts so m_state or the semaphore count is not updated if an interrupt happens here
+            // Disable interrupts so m_state or the semaphore count is not updated
+            // from the ISR if an interrupt happens here.
             portENTER_CRITICAL(&spinlock);
             const UBaseType_t interruptsLeft{uxSemaphoreGetCount(m_interruptCountingSepmaphore)};
             const bool interruptState{static_cast<bool>(m_state)};
             portEXIT_CRITICAL(&spinlock);
-            if (!(interruptsLeft % 2) != interruptState)
-                return PinState::Low;
-            else
-                return PinState::High;
+            // Depending on the semaphore counter (interrupts that remain to be processed)
+            // and the current state of the interrupt, determine which state the past interrupts
+            // correspond to (by doing an XOR operation).
+            return (!(interruptsLeft % 2) != interruptState) ? PinState::Low : PinState::High;
+        }
+        return PinState::Unknown;
+    }
+
+    /**
+     * @brief Receive the last pending interrupt from the ISR using a semaphore.
+     * This function blocks until an interrupt is received or the specified timeout elapses.
+     * It then processes all remaining pending interrupts in the semaphore, effectively
+     * resetting the semaphore count to 0, and returns the state of the last interrupt.
+     *
+     * @param xTicksToWait The maximum time to wait for an interrupt.
+     * @return The state of the last received interrupt (PinState::Low or PinState::High)
+     *         if any interrupt was received within the specified timeout,
+     *         or PinState::Unknown if no interrupt was received.
+     */
+    PinState BasicInterrupt::receiveLastInterrupt(const TickType_t xTicksToWait) const
+    {
+        if (xSemaphoreTake(m_interruptCountingSepmaphore, xTicksToWait))
+        {
+            while (uxSemaphoreGetCount(m_interruptCountingSepmaphore))
+                xSemaphoreTake(m_interruptCountingSepmaphore, 0);
+            return m_state;
         }
         return PinState::Unknown;
     }

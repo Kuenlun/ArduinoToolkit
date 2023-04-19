@@ -26,6 +26,7 @@ namespace AT
         inline PinState getState() const { return m_state; }
 
         PinState receiveInterrupt(const TickType_t xTicksToWait = portMAX_DELAY) const;
+        PinState receiveLastInterrupt(const TickType_t xTicksToWait = portMAX_DELAY) const;
 
     protected:
         static constexpr uint32_t s_DEFAULT_PERIODIC_CALL_ISR_MS{100};
