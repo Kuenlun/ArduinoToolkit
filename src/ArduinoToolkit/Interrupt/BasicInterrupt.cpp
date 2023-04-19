@@ -3,9 +3,6 @@
 namespace AT
 {
 
-    // Globals
-    static portMUX_TYPE spinlock = portMUX_INITIALIZER_UNLOCKED;
-
     // Interrupt service routine (ISR) function
     void IRAM_ATTR BasicInterrupt::intISR(void *const voidPtrInt)
     {
@@ -20,7 +17,7 @@ namespace AT
         {
             // Update the current state of the pin
             intPtr->m_state = newState;
-            // Send the interrupt to the interrupt queue
+            // Increment the interrupt semaphore counter
             xSemaphoreGiveFromISR(intPtr->m_interruptCountingSepmaphore, &xHigherPriorityTaskWoken);
             // Restart PeriodicCallToISR timer (also start it the first time)
             xTimerResetFromISR(intPtr->m_periodicCallToISRtimer, &xHigherPriorityTaskWoken);

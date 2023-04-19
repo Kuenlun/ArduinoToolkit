@@ -10,7 +10,7 @@ static constexpr uint8_t PIN_INT_PIR{26};
 void setup()
 {
     // static AT::BasicInterrupt pirInt(PIN_INT_PIR, INPUT_PULLDOWN);
-    static AT::BasicInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, true);
+    static AT::FilteredInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, 500, 2000, true);
     while (true)
     {
         AT::PinState state{doorInt.receiveInterrupt()};

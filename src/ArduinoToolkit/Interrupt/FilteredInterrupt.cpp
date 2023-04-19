@@ -3,6 +3,87 @@
 namespace AT
 {
 
+    // Static class members
+    UBaseType_t FilteredInterrupt::s_taskPriority{2};
+    TaskHandle_t FilteredInterrupt::s_deferredInterruptTaskHandle{nullptr};
+    std::vector<FilteredInterrupt *> FilteredInterrupt::s_instances;
+
+    void FilteredInterrupt::filteredStateChangeTimerCallback(const TimerHandle_t xTimer)
+    {
+        FilteredInterrupt *const &intPtr{static_cast<FilteredInterrupt *>(pvTimerGetTimerID(xTimer))};
+        if (intPtr->m_state == PinState::Low)
+        {
+            intPtr->m_state = PinState::High;
+            AT_LOG_I("State changed to HIGH");
+        }
+        else
+        {
+            intPtr->m_state = PinState::Low;
+            AT_LOG_I("State changed to LOW");
+        }
+        // Increment the interrupt semaphore counter
+        xSemaphoreGive(s_instances[0]->m_interruptCountingSepmaphore);
+    }
+
+    // Deferred interrupt handler function
+    void FilteredInterrupt::deferredInterruptTask(void *const parameters)
+    {
+        vTaskDelay(pdMS_TO_TICKS(1000 * 5));
+        while (true)
+        {
+            // Wait for an interrupt to happen
+            const PinState basicInterruptState{s_instances[0]->BasicInterrupt::receiveInterrupt()};
+            // -----------------------------------------------------------------------------------------------------------------------------
+            // Do things depending on the current state
+            switch (s_instances[0]->m_state)
+            {
+            case PinState::Low:
+            {
+                if (basicInterruptState == PinState::Low)
+                {
+                    // States are the same -> Stop update process
+                    xTimerStop(s_instances[0]->m_changeFilteredStateTimer, portMAX_DELAY);
+                }
+                else
+                {
+                    // States are different -> Start update process (timer starts automatically)
+                    xTimerChangePeriod(s_instances[0]->m_changeFilteredStateTimer,
+                                       pdMS_TO_TICKS(s_instances[0]->m_lowToHighTimeMs),
+                                       portMAX_DELAY);
+                }
+            }
+            break;
+            case PinState::High:
+            {
+                if (basicInterruptState == PinState::Low)
+                {
+                    // States are different -> Start update process
+                    xTimerChangePeriod(s_instances[0]->m_changeFilteredStateTimer,
+                                       pdMS_TO_TICKS(s_instances[0]->m_highToLowTimeMs),
+                                       portMAX_DELAY);
+                }
+                else
+                {
+                    // States are the same -> Stop update process
+                    xTimerStop(s_instances[0]->m_changeFilteredStateTimer, portMAX_DELAY);
+                }
+            }
+            break;
+            default:
+                // If the current filtered state is "PinState::Unknown" update the state directly
+                s_instances[0]->m_state = basicInterruptState;
+                if (basicInterruptState == PinState::Low)
+                    AT_LOG_I("State changed to LOW");
+                else
+                    AT_LOG_I("State changed to HIGH");
+                // Increment the interrupt semaphore counter
+                xSemaphoreGive(s_instances[0]->m_interruptCountingSepmaphore);
+                break;
+            }
+            // -----------------------------------------------------------------------------------------------------------------------------
+        }
+    }
+
     FilteredInterrupt::FilteredInterrupt(const uint8_t pin,
                                          const uint8_t mode,
                                          const uint32_t lowToHighTimeMs,
@@ -13,77 +94,99 @@ namespace AT
           m_lowToHighTimeMs(lowToHighTimeMs),
           m_highToLowTimeMs(highToLowTimeMs)
     {
+        // Create a semaphore to count the number of interrupts that happens
+        m_interruptCountingSepmaphore = xSemaphoreCreateCounting(-1, 0);
+        ASSERT(m_interruptCountingSepmaphore);
+        // Create a timer to change the state of the filtered interrupt
+        m_changeFilteredStateTimer = xTimerCreate("FilteredStateChangeTimer",
+                                                  1, // Will be changed later (any unsigned > 0 is OK)
+                                                  pdFALSE,
+                                                  static_cast<void *>(this),
+                                                  filteredStateChangeTimerCallback);
+        ASSERT(m_changeFilteredStateTimer);
+        // Check if the "deferredInterruptTask" needs to be created
+        if (s_instances.empty())
+        {
+            // Set up the deferredInterruptTask
+            const BaseType_t ret{xTaskCreatePinnedToCore(deferredInterruptTask,
+                                                         "deferredInterruptTask",
+                                                         3 * 1024,
+                                                         nullptr,
+                                                         s_taskPriority,
+                                                         &s_deferredInterruptTaskHandle,
+                                                         ARDUINO_RUNNING_CORE)};
+            ASSERT(ret);
+            AT_LOG_V("FilteredInterrupt deferred task created");
+        }
+        // Log some info from the task
+        PRINT_TASK_INFO(s_deferredInterruptTaskHandle);
+        // Add this object to the list of instances
+        s_instances.push_back(this);
         AT_LOG_D("FilteredInterrupt constructed");
     }
 
     FilteredInterrupt::~FilteredInterrupt()
     {
+        // Remove this object from the list of instances
+        s_instances.erase(std::remove(s_instances.begin(), s_instances.end(), this), s_instances.end());
+        // Delete the task if there are no objects left
+        if (s_instances.empty())
+        {
+            vTaskDelete(s_deferredInterruptTaskHandle);
+            AT_LOG_V("FilteredInterrupt deferred task deleted");
+        }
         AT_LOG_D("FilteredInterrupt destructed");
     }
 
-} // namespace AT
-
-/* STATIC CLASS MEMBERS
-// Static class members
-UBaseType_t BasicInterrupt::s_taskPriority{2};
-TaskHandle_t BasicInterrupt::s_deferredInterruptTaskHandle{nullptr};
-size_t BasicInterrupt::s_numInterruptsUsed{0};
-*/
-/* CONSTRUCTOR
-    // Check if the "deferredInterruptTask" needs to be created
-    if (!s_numInterruptsUsed)
+    /**
+     * @brief Receive an interrupt from the ISR using a semaphore.
+     * This function blocks until an interrupt is received or the specified timeout elapses.
+     * It then determines the state of the past interrupts by examining the semaphore counter
+     * and the current interrupt state.
+     *
+     * @param xTicksToWait The maximum time to wait for an interrupt.
+     * @return PinState::Low if the interrupt state is low, PinState::High if the interrupt state is high,
+     *         or PinState::Unknown if no interrupt was received within the specified timeout.
+     */
+    PinState FilteredInterrupt::receiveInterrupt(const TickType_t xTicksToWait) const
     {
-        // Create the queue to send the interrupts (common to all interrupt pins)
-        s_interruptQueue = xQueueCreate(s_INTERRUPT_QUEUE_LENGTH, sizeof(BasicInterrupt));
-        ASSERT(s_interruptQueue);
-        // Set up the deferredInterruptTask
-        const BaseType_t ret{xTaskCreatePinnedToCore(deferredInterruptTask,
-                                                     "deferredInterruptTask",
-                                                     3 * 1024,
-                                                     nullptr,
-                                                     s_taskPriority,
-                                                     &s_deferredInterruptTaskHandle,
-                                                     ARDUINO_RUNNING_CORE)};
-        ASSERT(ret);
-        AT_LOG_V("BasicInterrupt deferred interrupt task created");
-    }
-    // Log some info from the task
-    PRINT_TASK_INFO(s_deferredInterruptTaskHandle);
-    // Increase the interrupts used counter
-    s_numInterruptsUsed++;
-*/
-/* DESTRUCTOR
-     // Decrease the interrupts used counter
-     s_numInterruptsUsed--;
-     if (!s_numInterruptsUsed)
-     {
-         vTaskDelete(s_deferredInterruptTaskHandle);
-         AT_LOG_V("BasicInterrupt deferred interrupt task deleted");
-     }
-*/
-/* TASK
-// Deferred interrupt handler function
-void BasicInterrupt::deferredInterruptTask(void *const parameters)
-{
-    uint8_t rawBuffer[sizeof(BasicInterrupt)];
-    BasicInterrupt *const &intPtr{(BasicInterrupt *)rawBuffer};
-
-    while (true)
-    {
-        // Wait for an interrupt to happen
-        xQueueReceive(s_interruptQueue, intPtr, portMAX_DELAY);
-        // Log the current state of the sensor pin
-        switch (intPtr->m_state)
+        // Block until an interrupt arrives from the ISR
+        if (xSemaphoreTake(m_interruptCountingSepmaphore, xTicksToWait))
         {
-        case PinState::High:
-            AT_LOG_D("Pin %u: Separado", intPtr->m_pin);
-            break;
-        case PinState::Low:
-            AT_LOG_D("Pin %u: Junto", intPtr->m_pin);
-            break;
-        default:
-            break;
+            // Disable interrupts so m_state or the semaphore count is not updated
+            // from the ISR if an interrupt happens here.
+            portENTER_CRITICAL(&spinlock);
+            const UBaseType_t interruptsLeft{uxSemaphoreGetCount(m_interruptCountingSepmaphore)};
+            const bool interruptState{static_cast<bool>(m_state)};
+            portEXIT_CRITICAL(&spinlock);
+            // Depending on the semaphore counter (interrupts that remain to be processed)
+            // and the current state of the interrupt, determine which state the past interrupts
+            // correspond to (by doing an XOR operation).
+            return (!(interruptsLeft % 2) != interruptState) ? PinState::Low : PinState::High;
         }
+        return PinState::Unknown;
     }
-}
-*/
+
+    /**
+     * @brief Receive the last pending interrupt from the ISR using a semaphore.
+     * This function blocks until an interrupt is received or the specified timeout elapses.
+     * It then processes all remaining pending interrupts in the semaphore, effectively
+     * resetting the semaphore count to 0, and returns the state of the last interrupt.
+     *
+     * @param xTicksToWait The maximum time to wait for an interrupt.
+     * @return The state of the last received interrupt (PinState::Low or PinState::High)
+     *         if any interrupt was received within the specified timeout,
+     *         or PinState::Unknown if no interrupt was received.
+     */
+    PinState FilteredInterrupt::receiveLastInterrupt(const TickType_t xTicksToWait) const
+    {
+        if (xSemaphoreTake(m_interruptCountingSepmaphore, xTicksToWait))
+        {
+            while (uxSemaphoreGetCount(m_interruptCountingSepmaphore))
+                xSemaphoreTake(m_interruptCountingSepmaphore, 0);
+            return m_state;
+        }
+        return PinState::Unknown;
+    }
+
+} // namespace AT
