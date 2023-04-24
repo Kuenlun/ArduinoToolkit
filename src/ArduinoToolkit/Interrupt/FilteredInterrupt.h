@@ -25,6 +25,7 @@ namespace AT
     private:
         static void filteredStateChangeTimerCallback(const TimerHandle_t xTimer);
         static void deferredInterruptTask(void *const parameters);
+        static void processInterrupt(FilteredInterrupt* const intPtr);
 
     private:
         const uint32_t m_lowToHighTimeMs;

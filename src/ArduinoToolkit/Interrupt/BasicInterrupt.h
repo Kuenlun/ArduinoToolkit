@@ -26,6 +26,7 @@ namespace AT
         inline PinState getState() const { return m_state; }
 
         PinState receiveInterrupt(const TickType_t xTicksToWait = portMAX_DELAY) const;
+        PinState receiveInterruptDiscardIntermediate(const TickType_t xTicksToWait = portMAX_DELAY) const;
         PinState receiveLastInterrupt(const TickType_t xTicksToWait = portMAX_DELAY) const;
 
     public:
@@ -42,6 +43,9 @@ namespace AT
         PinState m_state{PinState::Unknown};
         SemaphoreHandle_t m_interruptCountingSepmaphore{nullptr};
         TimerHandle_t m_periodicCallToISRtimer{nullptr};
+
+    protected:
+        static SemaphoreHandle_t s_interruptCountingSepmaphore;
     };
 
 } // namespace AT

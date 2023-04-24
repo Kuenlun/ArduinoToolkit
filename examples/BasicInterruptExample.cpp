@@ -9,20 +9,16 @@ static constexpr uint8_t PIN_INT_PIR{26};
  * * * * * */
 void setup()
 {
-    // static AT::BasicInterrupt pirInt(PIN_INT_PIR, INPUT_PULLDOWN);
-    static AT::FilteredInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, 500, 2000, true);
+    static AT::BasicInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, true);
     while (true)
     {
-        AT::PinState state{doorInt.receiveInterrupt()};
-        //AT::PinState state{doorInt.receiveLastInterrupt()};
-        // Log the current state of the sensor pin
-        switch (state)
+        switch (doorInt.receiveInterruptDiscardIntermediate())
         {
         case AT::PinState::High:
-            AT_LOG_D("Pin %u: HIGH", doorInt.getPin());
+            LOG_I("Pin %u: HIGH", doorInt.getPin());
             break;
         case AT::PinState::Low:
-            AT_LOG_D("Pin %u: LOW", doorInt.getPin());
+            LOG_I("Pin %u: LOW", doorInt.getPin());
             break;
         default:
             break;

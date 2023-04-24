@@ -14,73 +14,76 @@ namespace AT
         if (intPtr->m_state == PinState::Low)
         {
             intPtr->m_state = PinState::High;
-            AT_LOG_I("State changed to HIGH");
+            AT_LOG_D("Filtered state changed to HIGH");
         }
         else
         {
             intPtr->m_state = PinState::Low;
-            AT_LOG_I("State changed to LOW");
+            AT_LOG_D("Filtered state changed to LOW");
         }
         // Increment the interrupt semaphore counter
-        xSemaphoreGive(s_instances[0]->m_interruptCountingSepmaphore);
+        xSemaphoreGive(intPtr->m_interruptCountingSepmaphore);
+    }
+
+    void FilteredInterrupt::processInterrupt(FilteredInterrupt *const intPtr)
+    {
+        const PinState basicInterruptState{intPtr->BasicInterrupt::receiveInterruptDiscardIntermediate()};
+        AT_LOG_V("Receved BasicInterrupt on pin %u", intPtr->getPin());
+        // Do things depending on the current state
+        switch (intPtr->m_state)
+        {
+        case PinState::Low:
+        {
+            if (basicInterruptState == PinState::Low)
+            {
+                AT_LOG_V("Got same state -> Stop timer on pin %u", intPtr->getPin());
+                xTimerStop(intPtr->m_changeFilteredStateTimer, portMAX_DELAY);
+            }
+            else
+            {
+                AT_LOG_V("Got different state -> Start timer on pin %u", intPtr->getPin());
+                xTimerChangePeriod(intPtr->m_changeFilteredStateTimer,
+                                   pdMS_TO_TICKS(intPtr->m_lowToHighTimeMs),
+                                   portMAX_DELAY);
+            }
+        }
+        break;
+        case PinState::High:
+        {
+            if (basicInterruptState == PinState::Low)
+            {
+                AT_LOG_V("Got different state -> Start timer on pin %u", intPtr->getPin());
+                xTimerChangePeriod(intPtr->m_changeFilteredStateTimer,
+                                   pdMS_TO_TICKS(intPtr->m_highToLowTimeMs),
+                                   portMAX_DELAY);
+            }
+            else
+            {
+                AT_LOG_V("Got same state -> Stop timer on pin %u", intPtr->getPin());
+                xTimerStop(intPtr->m_changeFilteredStateTimer, portMAX_DELAY);
+            }
+        }
+        break;
+        default:
+            // If the current filtered state is "PinState::Unknown" update the state directly
+            intPtr->m_state = basicInterruptState;
+            if (basicInterruptState == PinState::Low)
+                AT_LOG_D("Filtered state changed to LOW on pin %u", intPtr->getPin());
+            else
+                AT_LOG_D("Filtered state changed to HIGH on pin %u", intPtr->getPin());
+            // Increment the interrupt semaphore counter
+            xSemaphoreGive(intPtr->m_interruptCountingSepmaphore);
+            break;
+        }
     }
 
     // Deferred interrupt handler function
     void FilteredInterrupt::deferredInterruptTask(void *const parameters)
     {
-        vTaskDelay(pdMS_TO_TICKS(1000 * 5));
         while (true)
         {
-            // Wait for an interrupt to happen
-            const PinState basicInterruptState{s_instances[0]->BasicInterrupt::receiveInterrupt()};
-            // -----------------------------------------------------------------------------------------------------------------------------
-            // Do things depending on the current state
-            switch (s_instances[0]->m_state)
-            {
-            case PinState::Low:
-            {
-                if (basicInterruptState == PinState::Low)
-                {
-                    // States are the same -> Stop update process
-                    xTimerStop(s_instances[0]->m_changeFilteredStateTimer, portMAX_DELAY);
-                }
-                else
-                {
-                    // States are different -> Start update process (timer starts automatically)
-                    xTimerChangePeriod(s_instances[0]->m_changeFilteredStateTimer,
-                                       pdMS_TO_TICKS(s_instances[0]->m_lowToHighTimeMs),
-                                       portMAX_DELAY);
-                }
-            }
-            break;
-            case PinState::High:
-            {
-                if (basicInterruptState == PinState::Low)
-                {
-                    // States are different -> Start update process
-                    xTimerChangePeriod(s_instances[0]->m_changeFilteredStateTimer,
-                                       pdMS_TO_TICKS(s_instances[0]->m_highToLowTimeMs),
-                                       portMAX_DELAY);
-                }
-                else
-                {
-                    // States are the same -> Stop update process
-                    xTimerStop(s_instances[0]->m_changeFilteredStateTimer, portMAX_DELAY);
-                }
-            }
-            break;
-            default:
-                // If the current filtered state is "PinState::Unknown" update the state directly
-                s_instances[0]->m_state = basicInterruptState;
-                if (basicInterruptState == PinState::Low)
-                    AT_LOG_I("State changed to LOW");
-                else
-                    AT_LOG_I("State changed to HIGH");
-                // Increment the interrupt semaphore counter
-                xSemaphoreGive(s_instances[0]->m_interruptCountingSepmaphore);
-                break;
-            }
-            // -----------------------------------------------------------------------------------------------------------------------------
+            for (FilteredInterrupt *const intPtr : s_instances)
+                processInterrupt(intPtr);
         }
     }
 
