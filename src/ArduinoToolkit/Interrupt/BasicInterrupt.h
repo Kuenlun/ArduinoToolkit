@@ -30,6 +30,9 @@ namespace AT
         PinState receiveLastInterrupt(const TickType_t xTicksToWait = portMAX_DELAY) const;
 
     public:
+        static bool waitUntilAnyInterrupt(const TickType_t xTicksToWait = portMAX_DELAY);
+
+    public:
         static constexpr uint32_t s_DEFAULT_PERIODIC_CALL_ISR_MS{100};
 
     private:
@@ -44,7 +47,7 @@ namespace AT
         SemaphoreHandle_t m_interruptCountingSepmaphore{nullptr};
         TimerHandle_t m_periodicCallToISRtimer{nullptr};
 
-    protected:
+    private:
         static SemaphoreHandle_t s_interruptCountingSepmaphore;
     };
 

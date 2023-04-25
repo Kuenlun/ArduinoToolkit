@@ -8,7 +8,7 @@
 namespace AT
 {
 
-    class FilteredInterrupt : public BasicInterrupt
+    class FilteredInterrupt : private BasicInterrupt
     {
     public:
         FilteredInterrupt(const uint8_t pin,
@@ -19,13 +19,21 @@ namespace AT
                           const uint32_t periodicCallToISRms = BasicInterrupt::s_DEFAULT_PERIODIC_CALL_ISR_MS);
         ~FilteredInterrupt();
 
+        inline uint8_t getPin() const { return BasicInterrupt::getPin(); }
+        inline uint8_t getMode() const { return BasicInterrupt::getMode(); }
+        inline PinState getState() const { return BasicInterrupt::getState(); }
+
         PinState receiveInterrupt(const TickType_t xTicksToWait = portMAX_DELAY) const;
+        PinState receiveInterruptDiscardIntermediate(const TickType_t xTicksToWait = portMAX_DELAY) const;
         PinState receiveLastInterrupt(const TickType_t xTicksToWait = portMAX_DELAY) const;
+
+    public:
+        static bool waitUntilAnyInterrupt(const TickType_t xTicksToWait = portMAX_DELAY);
 
     private:
         static void filteredStateChangeTimerCallback(const TimerHandle_t xTimer);
         static void deferredInterruptTask(void *const parameters);
-        static void processInterrupt(FilteredInterrupt* const intPtr);
+        static void processInterrupt(FilteredInterrupt *const intPtr);
 
     private:
         const uint32_t m_lowToHighTimeMs;
@@ -38,6 +46,7 @@ namespace AT
         static UBaseType_t s_taskPriority;
         static TaskHandle_t s_deferredInterruptTaskHandle;
         static std::vector<FilteredInterrupt *> s_instances;
+        static SemaphoreHandle_t s_interruptCountingSepmaphore;
     };
 
 } // namespace AT

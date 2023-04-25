@@ -7,6 +7,7 @@ namespace AT
     UBaseType_t FilteredInterrupt::s_taskPriority{2};
     TaskHandle_t FilteredInterrupt::s_deferredInterruptTaskHandle{nullptr};
     std::vector<FilteredInterrupt *> FilteredInterrupt::s_instances;
+    SemaphoreHandle_t FilteredInterrupt::s_interruptCountingSepmaphore{nullptr};
 
     void FilteredInterrupt::filteredStateChangeTimerCallback(const TimerHandle_t xTimer)
     {
@@ -23,12 +24,16 @@ namespace AT
         }
         // Increment the interrupt semaphore counter
         xSemaphoreGive(intPtr->m_interruptCountingSepmaphore);
+        // Increment the class interrupt semaphore counter
+        xSemaphoreGive(s_interruptCountingSepmaphore);
     }
 
     void FilteredInterrupt::processInterrupt(FilteredInterrupt *const intPtr)
     {
-        const PinState basicInterruptState{intPtr->BasicInterrupt::receiveInterruptDiscardIntermediate()};
-        AT_LOG_V("Receved BasicInterrupt on pin %u", intPtr->getPin());
+        const PinState basicInterruptState{intPtr->BasicInterrupt::receiveInterruptDiscardIntermediate(0)};
+        // Check if the interrupt happened in this object
+        if (basicInterruptState == PinState::Unknown)
+            return;
         // Do things depending on the current state
         switch (intPtr->m_state)
         {
@@ -73,6 +78,8 @@ namespace AT
                 AT_LOG_D("Filtered state changed to HIGH on pin %u", intPtr->getPin());
             // Increment the interrupt semaphore counter
             xSemaphoreGive(intPtr->m_interruptCountingSepmaphore);
+            // Increment the class interrupt semaphore counter
+            xSemaphoreGive(s_interruptCountingSepmaphore);
             break;
         }
     }
@@ -82,6 +89,7 @@ namespace AT
     {
         while (true)
         {
+            BasicInterrupt::waitUntilAnyInterrupt();
             for (FilteredInterrupt *const intPtr : s_instances)
                 processInterrupt(intPtr);
         }
@@ -110,6 +118,9 @@ namespace AT
         // Check if the "deferredInterruptTask" needs to be created
         if (s_instances.empty())
         {
+            // Create a semaphore to count the number of interrupts that happens for all objects
+            s_interruptCountingSepmaphore = xSemaphoreCreateCounting(-1, 0);
+            ASSERT(s_interruptCountingSepmaphore);
             // Set up the deferredInterruptTask
             const BaseType_t ret{xTaskCreatePinnedToCore(deferredInterruptTask,
                                                          "deferredInterruptTask",
@@ -137,35 +148,50 @@ namespace AT
         {
             vTaskDelete(s_deferredInterruptTaskHandle);
             AT_LOG_V("FilteredInterrupt deferred task deleted");
+            vSemaphoreDelete(s_interruptCountingSepmaphore);
         }
         AT_LOG_D("FilteredInterrupt destructed");
     }
 
-    /**
-     * @brief Receive an interrupt from the ISR using a semaphore.
-     * This function blocks until an interrupt is received or the specified timeout elapses.
-     * It then determines the state of the past interrupts by examining the semaphore counter
-     * and the current interrupt state.
-     *
-     * @param xTicksToWait The maximum time to wait for an interrupt.
-     * @return PinState::Low if the interrupt state is low, PinState::High if the interrupt state is high,
-     *         or PinState::Unknown if no interrupt was received within the specified timeout.
-     */
     PinState FilteredInterrupt::receiveInterrupt(const TickType_t xTicksToWait) const
     {
         // Block until an interrupt arrives from the ISR
         if (xSemaphoreTake(m_interruptCountingSepmaphore, xTicksToWait))
         {
-            // Disable interrupts so m_state or the semaphore count is not updated
-            // from the ISR if an interrupt happens here.
-            portENTER_CRITICAL(&spinlock);
+            // Take also the class semaphore
+            xSemaphoreTake(s_interruptCountingSepmaphore, portMAX_DELAY);
+
             const UBaseType_t interruptsLeft{uxSemaphoreGetCount(m_interruptCountingSepmaphore)};
             const bool interruptState{static_cast<bool>(m_state)};
-            portEXIT_CRITICAL(&spinlock);
             // Depending on the semaphore counter (interrupts that remain to be processed)
             // and the current state of the interrupt, determine which state the past interrupts
             // correspond to (by doing an XOR operation).
             return (!(interruptsLeft % 2) != interruptState) ? PinState::Low : PinState::High;
+        }
+        return PinState::Unknown;
+    }
+
+    PinState FilteredInterrupt::receiveInterruptDiscardIntermediate(const TickType_t xTicksToWait) const
+    {
+        if (xSemaphoreTake(m_interruptCountingSepmaphore, xTicksToWait))
+        {
+            // Take also the class semaphore
+            xSemaphoreTake(s_interruptCountingSepmaphore, portMAX_DELAY);
+
+            UBaseType_t interruptsLeft{uxSemaphoreGetCount(m_interruptCountingSepmaphore)};
+            const bool interruptState{static_cast<bool>(m_state)};
+            // Discard the intermediate interrupts
+            const UBaseType_t aux{interruptsLeft % 2};
+            for (; interruptsLeft > aux; interruptsLeft--)
+            {
+                xSemaphoreTake(m_interruptCountingSepmaphore, portMAX_DELAY);
+                // Take also the class semaphore
+                xSemaphoreTake(s_interruptCountingSepmaphore, portMAX_DELAY);
+            }
+            // Depending on the semaphore counter (interrupts that remain to be processed)
+            // and the current state of the interrupt, determine which state the past interrupts
+            // correspond to (by doing an XOR operation).
+            return (static_cast<bool>(aux) != interruptState) ? PinState::High : PinState::Low;
         }
         return PinState::Unknown;
     }
@@ -185,11 +211,22 @@ namespace AT
     {
         if (xSemaphoreTake(m_interruptCountingSepmaphore, xTicksToWait))
         {
+            // Take also the class semaphore
+            xSemaphoreTake(s_interruptCountingSepmaphore, portMAX_DELAY);
             while (uxSemaphoreGetCount(m_interruptCountingSepmaphore))
-                xSemaphoreTake(m_interruptCountingSepmaphore, 0);
+            {
+                xSemaphoreTake(m_interruptCountingSepmaphore, portMAX_DELAY);
+                // Take also the class semaphore
+                xSemaphoreTake(s_interruptCountingSepmaphore, portMAX_DELAY);
+            }
             return m_state;
         }
         return PinState::Unknown;
+    }
+
+    bool FilteredInterrupt::waitUntilAnyInterrupt(const TickType_t xTicksToWait)
+    {
+        return xQueuePeek(s_interruptCountingSepmaphore, nullptr, xTicksToWait);
     }
 
 } // namespace AT

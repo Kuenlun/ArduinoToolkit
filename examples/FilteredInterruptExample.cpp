@@ -1,4 +1,5 @@
 #include <ArduinoToolkit/Interrupt/BasicInterrupt.h>
+#include <ArduinoToolkit/Interrupt/FilteredInterrupt.h>
 
 static constexpr uint8_t PIN_INT_DOOR{25};
 static constexpr uint8_t PIN_INT_PIR{26};
@@ -8,11 +9,11 @@ static constexpr uint8_t PIN_INT_PIR{26};
  * * * * * */
 void setup()
 {
-    static AT::BasicInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, true);
-    static AT::BasicInterrupt pirInt(PIN_INT_PIR, INPUT_PULLDOWN, false);
+    static AT::FilteredInterrupt doorInt(PIN_INT_DOOR, INPUT_PULLUP, 500, 1000, true);
+    static AT::FilteredInterrupt pirInt(PIN_INT_PIR, INPUT_PULLDOWN, 100, 1000, false);
     while (true)
     {
-        AT::BasicInterrupt::waitUntilAnyInterrupt();
+        AT::FilteredInterrupt::waitUntilAnyInterrupt();
         switch (doorInt.receiveInterruptDiscardIntermediate(0))
         {
         case AT::PinState::High:

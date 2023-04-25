@@ -16,11 +16,10 @@ namespace AT
         const PinState newState{static_cast<PinState>(rawPinValue != intPtr->m_reverseLogic)};
         BaseType_t xHigherPriorityTaskWoken{pdFALSE};
         // Start the PeriodicCallToISR timer the first time the ISR is called
-        static bool firstInterrupt{true};
-        if (firstInterrupt)
+        if (intPtr->m_state == PinState::Unknown)
         {
-            if (xTimerResetFromISR(intPtr->m_periodicCallToISRtimer, &xHigherPriorityTaskWoken))
-                firstInterrupt = false;
+            if (!xTimerResetFromISR(intPtr->m_periodicCallToISRtimer, &xHigherPriorityTaskWoken))
+                return;
         }
         // Check if the sensor state has changed
         if (newState != intPtr->m_state)
@@ -168,6 +167,11 @@ namespace AT
             return m_state;
         }
         return PinState::Unknown;
+    }
+
+    bool BasicInterrupt::waitUntilAnyInterrupt(const TickType_t xTicksToWait)
+    {
+        return xQueuePeek(s_interruptCountingSepmaphore, nullptr, xTicksToWait);
     }
 
 } // namespace AT
